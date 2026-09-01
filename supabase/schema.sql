@@ -84,7 +84,9 @@ returns text language plpgsql volatile set search_path = public as $$
 declare candidate text;
 begin
   loop
-    candidate := upper(substr(encode(gen_random_bytes(6), 'hex'), 1, 6));
+    -- gen_random_uuid() is available in modern Postgres without relying on
+    -- pgcrypto's gen_random_bytes() being exposed on the function search path.
+    candidate := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
     exit when not exists(select 1 from public.groups where invite_code = candidate);
   end loop;
   return candidate;
