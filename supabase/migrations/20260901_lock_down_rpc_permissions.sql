@@ -1,6 +1,11 @@
 -- Restrict SECURITY DEFINER functions to their intended callers.
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
-revoke execute on function public.is_group_member(uuid) from public, anon, authenticated;
+
+-- This helper is used inside RLS policies, so authenticated users must retain
+-- EXECUTE permission for policy evaluation. It only checks membership for
+-- auth.uid(), so direct calls do not expose other users' memberships.
+revoke execute on function public.is_group_member(uuid) from public, anon;
+grant execute on function public.is_group_member(uuid) to authenticated;
 
 revoke execute on function public.create_group(text) from public, anon;
 revoke execute on function public.join_group(text) from public, anon;
