@@ -84,8 +84,6 @@ returns text language plpgsql volatile set search_path = public as $$
 declare candidate text;
 begin
   loop
-    -- gen_random_uuid() is available in modern Postgres without relying on
-    -- pgcrypto's gen_random_bytes() being exposed on the function search path.
     candidate := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
     exit when not exists(select 1 from public.groups where invite_code = candidate);
   end loop;
@@ -198,4 +196,16 @@ from public.plans p where p.status = 'open';
 grant select on public.profiles, public.groups, public.group_members, public.plans, public.votes, public.super_votes, public.plan_scores to authenticated;
 grant insert on public.plans to authenticated;
 grant update on public.profiles, public.plans to authenticated;
-grant execute on function public.create_group(text), public.join_group(text), public.set_plan_vote(uuid, integer), public.toggle_super_vote(uuid) to authenticated;
+
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.is_group_member(uuid) from public, anon;
+revoke execute on function public.create_group(text) from public, anon;
+revoke execute on function public.join_group(text) from public, anon;
+revoke execute on function public.set_plan_vote(uuid, integer) from public, anon;
+revoke execute on function public.toggle_super_vote(uuid) from public, anon;
+
+grant execute on function public.is_group_member(uuid) to authenticated;
+grant execute on function public.create_group(text) to authenticated;
+grant execute on function public.join_group(text) to authenticated;
+grant execute on function public.set_plan_vote(uuid, integer) to authenticated;
+grant execute on function public.toggle_super_vote(uuid) to authenticated;
