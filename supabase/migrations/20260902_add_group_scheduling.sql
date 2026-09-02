@@ -73,7 +73,7 @@ create policy "Members delete own schedule availability" on public.schedule_avai
   user_id = (select auth.uid()) and public.is_group_member(group_id)
 );
 
-revoke all on table public.group_schedule_settings from anon;
-revoke all on table public.schedule_availability from anon;
+revoke all on table public.group_schedule_settings from anon, authenticated;
+revoke all on table public.schedule_availability from anon, authenticated;
 grant select, insert, update, delete on table public.group_schedule_settings to authenticated;
 grant select, insert, update, delete on table public.schedule_availability to authenticated;
