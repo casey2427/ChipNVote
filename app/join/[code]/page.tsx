@@ -8,8 +8,6 @@ import { createClient } from "@/lib/supabase/client";
 
 const PENDING_NAME_KEY = "chipnvote:pending-join-name";
 
-type OAuthProvider = "google" | "apple";
-
 export default function JoinRoomPage() {
   const { code } = useParams<{ code: string }>();
   const router = useRouter();
@@ -18,7 +16,7 @@ export default function JoinRoomPage() {
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
   const [joining, setJoining] = useState(false);
-  const [oauthProvider, setOauthProvider] = useState<OAuthProvider | null>(null);
+  const [openingGoogle, setOpeningGoogle] = useState(false);
 
   async function joinCurrentUser(userId: string) {
     const supabase = createClient();
@@ -65,7 +63,7 @@ export default function JoinRoomPage() {
     return () => { cancelled = true; };
   }, [inviteCode]);
 
-  async function continueWith(provider: OAuthProvider) {
+  async function continueWithGoogle() {
     const displayName = name.trim();
     if (!displayName) {
       setError("Enter your name first.");
@@ -73,7 +71,7 @@ export default function JoinRoomPage() {
     }
 
     setError("");
-    setOauthProvider(provider);
+    setOpeningGoogle(true);
     window.sessionStorage.setItem(PENDING_NAME_KEY, displayName);
 
     const supabase = createClient();
@@ -82,14 +80,14 @@ export default function JoinRoomPage() {
     callback.searchParams.set("next", next);
 
     const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider,
+      provider: "google",
       options: { redirectTo: callback.toString() },
     });
 
     if (authError) {
       window.sessionStorage.removeItem(PENDING_NAME_KEY);
       setError(authError.message);
-      setOauthProvider(null);
+      setOpeningGoogle(false);
     }
   }
 
@@ -132,20 +130,10 @@ export default function JoinRoomPage() {
               type="button"
               className="button"
               style={{ width: "100%", marginTop: 18 }}
-              onClick={() => continueWith("google")}
-              disabled={oauthProvider !== null}
+              onClick={continueWithGoogle}
+              disabled={openingGoogle}
             >
-              <ShieldCheck size={17} /> {oauthProvider === "google" ? "Opening Google…" : "Continue with Google"}
-            </button>
-
-            <button
-              type="button"
-              className="button secondary"
-              style={{ width: "100%", marginTop: 8 }}
-              onClick={() => continueWith("apple")}
-              disabled={oauthProvider !== null}
-            >
-              {oauthProvider === "apple" ? "Opening Apple…" : "Continue with Apple"}
+              <ShieldCheck size={17} /> {openingGoogle ? "Opening Google…" : "Continue with Google"}
             </button>
 
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "14px 0 0", lineHeight: 1.5 }}>
