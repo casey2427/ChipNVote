@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
   // across browser restarts until they explicitly log out or the refresh session expires.
   const { data } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
-  const protectedRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/room");
+  const protectedRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/room") || pathname.startsWith("/account");
 
   if (protectedRoute && !data.user) {
     const url = request.nextUrl.clone();
