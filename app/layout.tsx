@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./events.css";
-import GuestAccountPrompt from "./GuestAccountPrompt";
 
 export const metadata: Metadata = {
   title: "ChipNVote — Put your chips where your plans are",
@@ -11,10 +10,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>
-        {children}
-        <GuestAccountPrompt />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
