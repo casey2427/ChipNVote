@@ -1,6 +1,11 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+function safeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard";
+  return value;
+}
+
 export async function middleware(request: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
     return NextResponse.next();
@@ -22,16 +27,39 @@ export async function middleware(request: NextRequest) {
     },
   );
 
+  // Calling getUser on normal page visits lets Supabase refresh an expired access
+  // token from the long-lived refresh session and writes the refreshed cookies back.
   const { data } = await supabase.auth.getUser();
-  const protectedRoute = request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/room");
+  const pathname = request.nextUrl.pathname;
+  const protectedRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/room");
+
   if (protectedRoute && !data.user) {
     const url = request.nextUrl.clone();
+    const requestedPath = `${pathname}${request.nextUrl.search}`;
     url.pathname = "/auth";
+    url.search = "";
+    url.searchParams.set("next", requestedPath);
     return NextResponse.redirect(url);
   }
+
+  if (data.user && pathname === "/auth") {
+    const url = request.nextUrl.clone();
+    const nextPath = safeNextPath(request.nextUrl.searchParams.get("next"));
+    url.pathname = nextPath.split("?")[0];
+    url.search = nextPath.includes("?") ? `?${nextPath.split("?").slice(1).join("?")}` : "";
+    return NextResponse.redirect(url);
+  }
+
+  if (data.user && pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   return response;
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/room/:path*"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };
