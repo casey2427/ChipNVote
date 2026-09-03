@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./events.css";
 
 export const metadata: Metadata = {
   title: "ChipNVote — Put your chips where your plans are",
