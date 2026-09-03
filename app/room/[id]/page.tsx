@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, Check, Coins, Copy, Plus, Sparkles, Users, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, Coins, Copy, Plus, Sparkles, Trash2, Users, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Group = { id: string; name: string; invite_code: string };
-type GroupEvent = { id: string; title: string; event_date: string | null; voting_deadline: string | null; created_at: string };
+type GroupEvent = { id: string; title: string; event_date: string | null; voting_deadline: string | null; created_by: string; created_at: string };
 type Wallet = { available_chips: number; daily_chips: number; bank_cap: number; last_accrual_date: string };
 type Score = {
   id: string;
@@ -17,9 +17,7 @@ type Score = {
   location: string | null;
   created_at: string;
   regular_points: number;
-  super_votes: number;
   supporters: number;
-  super_value: number;
   total_score: number;
 };
 type ScheduleSettings = {
@@ -113,7 +111,6 @@ export default function RoomPage() {
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [drafts, setDrafts] = useState<Record<string, number>>({});
   const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [superPlan, setSuperPlan] = useState<string | null>(null);
   const [memberCount, setMemberCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState("");
   const [currentRole, setCurrentRole] = useState("member");
@@ -145,14 +142,12 @@ export default function RoomPage() {
     setError("");
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return router.push("/auth");
-    const month = new Date().toISOString().slice(0, 7) + "-01";
-    const [groupResult, eventsResult, scoresResult, votesResult, walletResult, superResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
+    const [groupResult, eventsResult, scoresResult, votesResult, walletResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
       supabase.from("groups").select("id,name,invite_code").eq("id", id).single(),
-      supabase.from("events").select("id,title,event_date,voting_deadline,created_at").eq("group_id", id).order("created_at", { ascending: true }),
+      supabase.from("events").select("id,title,event_date,voting_deadline,created_by,created_at").eq("group_id", id).order("created_at", { ascending: true }),
       supabase.from("plan_scores").select("*").eq("group_id", id),
       supabase.rpc("get_my_vote_allocations", { p_group_id: id }),
       supabase.rpc("get_my_chip_wallet", { p_group_id: id }).single(),
-      supabase.from("super_votes").select("plan_id").eq("group_id", id).eq("user_id", auth.user.id).eq("month_key", month).maybeSingle(),
       supabase.from("group_members").select("user_id", { count: "exact", head: true }).eq("group_id", id),
       supabase.from("group_members").select("role").eq("group_id", id).eq("user_id", auth.user.id).single(),
       supabase.from("group_schedule_settings").select("group_id,created_by,start_date,end_date,start_hour,end_hour,slot_minutes,timezone").eq("group_id", id).maybeSingle(),
@@ -166,11 +161,21 @@ export default function RoomPage() {
     setCurrentUserId(auth.user.id);
     setCurrentRole(membershipResult.data?.role ?? "member");
     setGroup(groupResult.data as Group);
+    const today = localDateKey();
     const sortedEvents = ((eventsResult.data ?? []) as GroupEvent[]).sort((a, b) => {
-      if (a.event_date && b.event_date) return a.event_date.localeCompare(b.event_date) || a.created_at.localeCompare(b.created_at);
-      if (a.event_date) return -1;
-      if (b.event_date) return 1;
-      return a.created_at.localeCompare(b.created_at);
+      const aExpired = Boolean(a.event_date && a.event_date < today);
+      const bExpired = Boolean(b.event_date && b.event_date < today);
+      if (aExpired !== bExpired) return aExpired ? 1 : -1;
+
+      if (!aExpired && !bExpired) {
+        if (a.event_date && b.event_date) return a.event_date.localeCompare(b.event_date) || a.created_at.localeCompare(b.created_at);
+        if (a.event_date) return -1;
+        if (b.event_date) return 1;
+        return a.created_at.localeCompare(b.created_at);
+      }
+
+      if (a.event_date && b.event_date) return b.event_date.localeCompare(a.event_date) || b.created_at.localeCompare(a.created_at);
+      return b.created_at.localeCompare(a.created_at);
     });
     setEvents(sortedEvents);
     setScores((scoresResult.data ?? []) as Score[]);
@@ -178,7 +183,6 @@ export default function RoomPage() {
     setAllocations(next);
     setDrafts(next);
     setWallet((walletResult.data ?? null) as Wallet | null);
-    setSuperPlan(superResult.data?.plan_id ?? null);
     setMemberCount(membersResult.count ?? 0);
     const loadedSchedule = (scheduleResult.data ?? null) as ScheduleSettings | null;
     setScheduleSettings(loadedSchedule);
@@ -256,12 +260,6 @@ export default function RoomPage() {
     await loadRoom();
   }
 
-  async function toggleSuper(planId: string) {
-    const { error: rpcError } = await supabase.rpc("toggle_super_vote", { p_plan_id: planId });
-    if (rpcError) return setError(rpcError.message);
-    await loadRoom();
-  }
-
   async function addEvent(event: FormEvent) {
     event.preventDefault();
     const { data: auth } = await supabase.auth.getUser();
@@ -278,6 +276,15 @@ export default function RoomPage() {
     setEventDate("");
     setEventDeadline(defaultVotingDeadline());
     setShowEventModal(false);
+    await loadRoom();
+  }
+
+  async function deleteEvent(groupEvent: GroupEvent) {
+    const confirmed = window.confirm(`Delete “${groupEvent.title}” and all of its activities and results?`);
+    if (!confirmed) return;
+    setError("");
+    const { error: deleteError } = await supabase.from("events").delete().eq("id", groupEvent.id).eq("group_id", id);
+    if (deleteError) return setError(deleteError.message);
     await loadRoom();
   }
 
@@ -390,10 +397,6 @@ export default function RoomPage() {
             <div className="wallet-number">{remaining}</div>
             <small>You get 10 chips every day. Unused chips roll over.</small>
             <div className="meter"><span style={{ width: `${remainingPercent}%` }} /></div>
-            <div className="super-box">
-              <div className="star">★</div>
-              <div><strong>Super Vote</strong><br /><small>{superPlan ? "Used this month" : `Worth ${memberCount * 20} points`}</small></div>
-            </div>
           </div>
         </aside>
 
@@ -426,6 +429,8 @@ export default function RoomPage() {
                   const deadlineMs = groupEvent.voting_deadline ? new Date(groupEvent.voting_deadline).getTime() : null;
                   const votingEnded = deadlineMs !== null && Date.now() >= deadlineMs;
                   const resultsVisible = votingEnded || groupEvent.voting_deadline === null;
+                  const expiredEvent = Boolean(groupEvent.event_date && groupEvent.event_date < localDateKey());
+                  const canDeleteEvent = isOwner || groupEvent.created_by === currentUserId;
                   const eventPlans = scores
                     .filter((plan) => plan.event_id === groupEvent.id)
                     .sort((a, b) => resultsVisible
@@ -439,7 +444,10 @@ export default function RoomPage() {
                           <h2>{groupEvent.title}</h2>
                           {groupEvent.voting_deadline && <p className="event-budget-copy">{votingEnded ? "Voting ended" : `Voting ends ${formatVotingDeadline(groupEvent.voting_deadline)}`}</p>}
                         </div>
-                        {!votingEnded && <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {!votingEnded && !expiredEvent && <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>}
+                          {expiredEvent && canDeleteEvent && <button className="button secondary" onClick={() => deleteEvent(groupEvent)}><Trash2 size={16} /> Delete</button>}
+                        </div>
                       </div>
 
                       {eventPlans.length === 0 ? (
@@ -448,7 +456,6 @@ export default function RoomPage() {
                         const current = allocations[plan.id] ?? 0;
                         const draft = drafts[plan.id] ?? current;
                         const max = current + remaining;
-                        const activeSuper = superPlan === plan.id;
                         const detailsLine = [plan.location, plan.description].filter(Boolean).join(" · ");
                         return (
                           <article className="proposal event-proposal" key={plan.id}>
@@ -457,11 +464,11 @@ export default function RoomPage() {
                               <div>
                                 <h2>{plan.title}</h2>
                                 {detailsLine && <p>{detailsLine}</p>}
-                                {resultsVisible && <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points} &nbsp; ★ {plan.super_votes}</p>}
+                                {resultsVisible && <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points}</p>}
                               </div>
                               {resultsVisible && <div className="total"><small>Score</small>{plan.total_score}</div>}
                             </div>
-                            {!votingEnded && (
+                            {!votingEnded && !expiredEvent && (
                               <div className="vote-control">
                                 <div className="range-wrap">
                                   <span>Chips</span>
@@ -469,7 +476,6 @@ export default function RoomPage() {
                                   <span className="count-box">{draft}</span>
                                 </div>
                                 <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
-                                <button className={activeSuper ? "super-button active" : "super-button"} onClick={() => toggleSuper(plan.id)}>{activeSuper ? `★ +${plan.super_value}` : superPlan ? "☆ Move" : "☆ Super Vote"}</button>
                               </div>
                             )}
                           </article>
