@@ -185,10 +185,8 @@ export default function RoomPage() {
 
   useEffect(() => { void loadRoom(); }, [loadRoom]);
 
-  const spent = useMemo(() => Object.values(allocations).reduce((sum, value) => sum + value, 0), [allocations]);
   const remaining = wallet?.available_chips ?? 0;
   const bankCap = wallet?.bank_cap ?? 500;
-  const dailyChips = wallet?.daily_chips ?? 10;
   const remainingPercent = Math.max(0, Math.min(100, (remaining / bankCap) * 100));
   const isOwner = currentRole === "owner";
 
@@ -365,15 +363,13 @@ export default function RoomPage() {
         <aside>
           <Link href="/dashboard" style={{ display: "inline-flex", gap: 7, alignItems: "center", color: "var(--muted)", fontSize: 13, fontWeight: 800, marginBottom: 16 }}><ArrowLeft size={15} /> All groups</Link>
           <div className="wallet">
-            <div className="eyebrow" style={{ color: "rgba(255,255,255,.48)" }}>Your chip bank</div>
+            <div className="eyebrow" style={{ color: "rgba(255,255,255,.48)" }}>Your chips</div>
             <div className="wallet-number">{remaining}</div>
-            <small>chips available</small>
+            <small>available</small>
             <div className="meter"><span style={{ width: `${remainingPercent}%` }} /></div>
-            <small>+{dailyChips} every day · unused chips roll over · {bankCap} max</small>
-            <div style={{ marginTop: 8 }}><small>{spent} chips currently committed</small></div>
             <div className="super-box">
               <div className="star">★</div>
-              <div><strong>Super Vote</strong><br /><small>{superPlan ? "Used this month · tap another activity to move it" : `Worth ${memberCount * 20} points`}</small></div>
+              <div><strong>Super Vote</strong><br /><small>{superPlan ? "Used this month" : `Worth ${memberCount * 20} points`}</small></div>
             </div>
           </div>
         </aside>
@@ -381,7 +377,7 @@ export default function RoomPage() {
         <section>
           <div className="room-head">
             <div>
-              <div className="eyebrow"><span className="dot" style={{ display: "inline-block", marginRight: 7 }} />{memberCount} members · +{dailyChips} chips/day · {bankCap} max bank</div>
+              <div className="eyebrow"><span className="dot" style={{ display: "inline-block", marginRight: 7 }} />{memberCount} members</div>
               <h1 className="room-title">{group.name}</h1>
             </div>
             {roomTab === "vote" ? (
@@ -392,7 +388,7 @@ export default function RoomPage() {
           </div>
 
           <div className="room-tabs" role="tablist" aria-label="Room tools">
-            <button className={roomTab === "vote" ? "room-tab active" : "room-tab"} onClick={() => setRoomTab("vote")} role="tab" aria-selected={roomTab === "vote"}>Events & voting</button>
+            <button className={roomTab === "vote" ? "room-tab active" : "room-tab"} onClick={() => setRoomTab("vote")} role="tab" aria-selected={roomTab === "vote"}>Events</button>
             <button className={roomTab === "schedule" ? "room-tab active" : "room-tab"} onClick={() => setRoomTab("schedule")} role="tab" aria-selected={roomTab === "schedule"}><CalendarDays size={16} /> Find a time</button>
           </div>
 
@@ -400,7 +396,7 @@ export default function RoomPage() {
 
           {roomTab === "vote" ? (
             events.length === 0 ? (
-              <div className="empty"><Sparkles size={32} /><h2>No events yet</h2><p>Create a date, trip, occasion, or Date TBD event, then add the activities everyone wants to do.</p><button className="button yellow" style={{ marginTop: 14 }} onClick={() => setShowEventModal(true)}><Plus size={17} /> Create first event</button></div>
+              <div className="empty"><Sparkles size={32} /><h2>No events yet</h2><button className="button yellow" style={{ marginTop: 14 }} onClick={() => setShowEventModal(true)}><Plus size={17} /> Create event</button></div>
             ) : (
               <div className="event-list">
                 {events.map((groupEvent) => {
@@ -416,31 +412,32 @@ export default function RoomPage() {
                       </div>
 
                       {eventPlans.length === 0 ? (
-                        <div className="event-empty">No activities yet. Add the first option for this event.</div>
+                        <div className="event-empty">No activities yet.</div>
                       ) : eventPlans.map((plan, index) => {
                         const current = allocations[plan.id] ?? 0;
                         const draft = drafts[plan.id] ?? current;
                         const max = current + remaining;
                         const activeSuper = superPlan === plan.id;
+                        const detailsLine = [plan.location, plan.description].filter(Boolean).join(" · ");
                         return (
                           <article className="proposal event-proposal" key={plan.id}>
                             <div className="proposal-top">
                               <div className={index === 0 ? "rank first" : "rank"}>{index + 1}</div>
                               <div>
                                 <h2>{plan.title}</h2>
-                                <p>{[plan.location, plan.description].filter(Boolean).join(" · ") || "Details coming soon"}</p>
-                                <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} supporters &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points} chips &nbsp; ★ {plan.super_votes}</p>
+                                {detailsLine && <p>{detailsLine}</p>}
+                                <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points} &nbsp; ★ {plan.super_votes}</p>
                               </div>
-                              <div className="total"><small>Total score</small>{plan.total_score}</div>
+                              <div className="total"><small>Score</small>{plan.total_score}</div>
                             </div>
                             <div className="vote-control">
                               <div className="range-wrap">
-                                <span>Your stake</span>
+                                <span>Chips</span>
                                 <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="5" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
                                 <span className="count-box">{draft}</span>
                               </div>
                               <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
-                              <button className={activeSuper ? "super-button active" : "super-button"} onClick={() => toggleSuper(plan.id)}>{activeSuper ? `★ +${plan.super_value}` : superPlan ? "☆ Move Super Vote" : "☆ Super Vote"}</button>
+                              <button className={activeSuper ? "super-button active" : "super-button"} onClick={() => toggleSuper(plan.id)}>{activeSuper ? `★ +${plan.super_value}` : superPlan ? "☆ Move" : "☆ Super Vote"}</button>
                             </div>
                           </article>
                         );
@@ -455,9 +452,8 @@ export default function RoomPage() {
               {(!scheduleSettings || showScheduleSetup) && isOwner ? (
                 <form className="schedule-setup" onSubmit={saveSchedule}>
                   <div>
-                    <div className="eyebrow">Availability window</div>
-                    <h2>{scheduleSettings ? "Edit when people can choose" : "Open the calendar"}</h2>
-                    <p>Choose up to 14 days and the hours your group should compare.</p>
+                    <div className="eyebrow">Availability</div>
+                    <h2>{scheduleSettings ? "Edit schedule" : "Set up schedule"}</h2>
                   </div>
                   <div className="schedule-setup-grid">
                     <label className="field">First day<input className="input" type="date" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} required /></label>
@@ -469,20 +465,20 @@ export default function RoomPage() {
                   </div>
                   <div className="modal-actions">
                     {scheduleSettings && <button type="button" className="button secondary" onClick={() => setShowScheduleSetup(false)}>Cancel</button>}
-                    <button className="button" disabled={scheduleSaving || scheduleEndHour <= scheduleStartHour}>{scheduleSaving ? "Saving…" : "Open availability"}</button>
+                    <button className="button" disabled={scheduleSaving || scheduleEndHour <= scheduleStartHour}>{scheduleSaving ? "Saving…" : "Save"}</button>
                   </div>
                 </form>
               ) : !scheduleSettings ? (
-                <div className="empty"><CalendarDays size={32} /><h2>Scheduling is not open yet</h2><p>The group owner can choose a few days and hours, then everyone can mark when they are free.</p></div>
+                <div className="empty"><CalendarDays size={32} /><h2>Scheduling is not open yet</h2></div>
               ) : (
                 <>
                   <div className="schedule-overview">
                     <div>
                       <div className="eyebrow">Find a time</div>
-                      <h2>{respondedCount}/{memberCount} members responded</h2>
-                      <p>Tap once for <strong>Available</strong>, twice for <strong>Preferred</strong>, and a third time to clear it. Times are shown in {scheduleSettings.timezone}.</p>
+                      <h2>{respondedCount}/{memberCount} responded</h2>
+                      <p>Tap once for available, twice for preferred.</p>
                     </div>
-                    <button className="button secondary" onClick={clearMyTimes}>Clear my times</button>
+                    <button className="button secondary" onClick={clearMyTimes}>Clear</button>
                   </div>
 
                   {bestSlots.length > 0 && (
@@ -497,7 +493,7 @@ export default function RoomPage() {
                     </div>
                   )}
 
-                  <div className="schedule-legend"><span><i className="legend-available" /> Available</span><span><i className="legend-preferred" /> Your preferred time</span><span>Darker = more people free</span></div>
+                  <div className="schedule-legend"><span><i className="legend-available" /> Available</span><span><i className="legend-preferred" /> Preferred</span></div>
 
                   <div className="schedule-scroll">
                     <div className="schedule-grid" style={{ gridTemplateColumns: `76px repeat(${scheduleDates.length}, minmax(112px, 1fr))` }}>
@@ -544,11 +540,10 @@ export default function RoomPage() {
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowEventModal(false)}>
           <form className="modal" onSubmit={addEvent}>
             <button type="button" onClick={() => setShowEventModal(false)} style={{ float: "right", border: 0, background: "transparent", cursor: "pointer" }} aria-label="Close"><X /></button>
-            <h2>Create an event</h2>
-            <p style={{ color: "var(--muted)" }}>Give related activities one place to compete, like Halloween, a birthday, or a trip.</p>
+            <h2>Create event</h2>
             <label className="field">Event name<input className="input" placeholder="Halloween trip" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} maxLength={120} required /></label>
             <label className="field">Date <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} /></label>
-            <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowEventModal(false)}>Cancel</button><button className="button">Create event</button></div>
+            <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowEventModal(false)}>Cancel</button><button className="button">Create</button></div>
           </form>
         </div>
       )}
@@ -557,12 +552,11 @@ export default function RoomPage() {
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowPlanModal(false)}>
           <form className="modal" onSubmit={addPlan}>
             <button type="button" onClick={() => setShowPlanModal(false)} style={{ float: "right", border: 0, background: "transparent", cursor: "pointer" }} aria-label="Close"><X /></button>
-            <h2>Add an activity</h2>
-            <p style={{ color: "var(--muted)" }}>Add an option people can put chips behind inside this event.</p>
+            <h2>Add activity</h2>
             <label className="field">Activity name<input className="input" placeholder="Halloween Horror Nights" value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
             <label className="field">Place <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" placeholder="Universal Studios" value={location} onChange={(e) => setLocation(e.target.value)} /></label>
-            <label className="field">Extra details<textarea className="input" rows={3} placeholder="Go after dinner" value={details} onChange={(e) => setDetails(e.target.value)} /></label>
-            <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowPlanModal(false)}>Cancel</button><button className="button">Add activity</button></div>
+            <label className="field">Details <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><textarea className="input" rows={3} value={details} onChange={(e) => setDetails(e.target.value)} /></label>
+            <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowPlanModal(false)}>Cancel</button><button className="button">Add</button></div>
           </form>
         </div>
       )}
