@@ -365,7 +365,7 @@ export default function RoomPage() {
           <div className="wallet">
             <div className="eyebrow" style={{ color: "rgba(255,255,255,.48)" }}>Your chips</div>
             <div className="wallet-number">{remaining}</div>
-            <small>available</small>
+            <small>You get 10 chips every day. Unused chips roll over.</small>
             <div className="meter"><span style={{ width: `${remainingPercent}%` }} /></div>
             <div className="super-box">
               <div className="star">★</div>
