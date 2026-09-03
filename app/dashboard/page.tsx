@@ -6,12 +6,27 @@ import { ArrowRight, Coins, LogOut, Plus, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type Group = { id: string; name: string; invite_code: string; chip_budget: number; role: "owner" | "member" };
+type ResetMode = "monthly" | "weekly" | "event";
+type Group = {
+  id: string;
+  name: string;
+  invite_code: string;
+  chip_budget: number;
+  chip_reset_mode: ResetMode;
+  role: "owner" | "member";
+};
+
+function resetLabel(mode: ResetMode) {
+  if (mode === "weekly") return "100 chips / week";
+  if (mode === "event") return "100 chips / event";
+  return "100 chips / month";
+}
 
 export default function Dashboard() {
   const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
   const [newName, setNewName] = useState("");
+  const [resetMode, setResetMode] = useState<ResetMode>("monthly");
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyGroupId, setBusyGroupId] = useState<string | null>(null);
@@ -23,7 +38,7 @@ export default function Dashboard() {
     if (!auth.user) return router.push("/auth");
     const { data, error: queryError } = await supabase
       .from("group_members")
-      .select("role,groups(id,name,invite_code,chip_budget)")
+      .select("role,groups(id,name,invite_code,chip_budget,chip_reset_mode)")
       .eq("user_id", auth.user.id);
     if (queryError) setError(queryError.message);
     const rows = (data ?? []).flatMap((row: any) => row.groups ? [{ ...row.groups, role: row.role }] : []);
@@ -36,9 +51,13 @@ export default function Dashboard() {
   async function createGroup(event: FormEvent) {
     event.preventDefault();
     setError("");
-    const { data, error: rpcError } = await supabase.rpc("create_group", { p_name: newName });
+    const { data, error: rpcError } = await supabase.rpc("create_group_with_settings", {
+      p_name: newName,
+      p_chip_reset_mode: resetMode,
+    });
     if (rpcError) return setError(rpcError.message);
     setNewName("");
+    setResetMode("monthly");
     router.push(`/room/${data}`);
   }
 
@@ -55,7 +74,7 @@ export default function Dashboard() {
     const deleting = group.role === "owner";
     const confirmed = window.confirm(
       deleting
-        ? `Delete “${group.name}”? This permanently removes the group, its plans, votes, and availability.`
+        ? `Delete “${group.name}”? This permanently removes the group, its events, plans, votes, and availability.`
         : `Leave “${group.name}”? Your votes and availability in this group will be removed.`,
     );
     if (!confirmed) return;
@@ -86,7 +105,16 @@ export default function Dashboard() {
         <div className="forms-grid">
           <form className="form-card" onSubmit={createGroup}>
             <strong><Plus size={17} style={{ verticalAlign: "middle" }} /> Create a new group</strong>
-            <div className="inline-form"><input className="input" placeholder="Weekend Crew" value={newName} onChange={(e) => setNewName(e.target.value)} required /><button className="button">Create</button></div>
+            <div className="group-create-grid">
+              <input className="input" placeholder="Weekend Crew" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+              <select className="input" aria-label="Chip reset" value={resetMode} onChange={(e) => setResetMode(e.target.value as ResetMode)}>
+                <option value="monthly">Monthly chips</option>
+                <option value="weekly">Weekly chips</option>
+                <option value="event">Per-event chips</option>
+              </select>
+              <button className="button">Create</button>
+            </div>
+            <small className="form-hint">{resetLabel(resetMode)}. Monthly is the default so every vote has an opportunity cost across the group.</small>
           </form>
           <form className="form-card" onSubmit={joinGroup}>
             <strong><Users size={17} style={{ verticalAlign: "middle" }} /> Join with a room code</strong>
@@ -100,7 +128,12 @@ export default function Dashboard() {
           <div className="grid">{groups.map((group, i) => (
             <div className="group-card" key={group.id}>
               <Link href={`/room/${group.id}`} style={{ flex: 1 }}>
-                <div><div className="group-emoji">{["🎉", "✈️", "🍜", "🌴"][i % 4]}</div><h2>{group.name}</h2><p>Room code: {group.invite_code}</p></div>
+                <div>
+                  <div className="group-emoji">{["🎉", "✈️", "🍜", "🌴"][i % 4]}</div>
+                  <h2>{group.name}</h2>
+                  <p>Room code: {group.invite_code}</p>
+                  <p className="group-budget-label">{resetLabel(group.chip_reset_mode)}</p>
+                </div>
               </Link>
               <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", marginTop: 18 }}>
                 <Link href={`/room/${group.id}`} style={{ fontWeight: 850 }}>Open room <ArrowRight size={16} style={{ verticalAlign: "middle" }} /></Link>
