@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Coins, LoaderCircle, UserRound } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Coins, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+const PENDING_NAME_KEY = "chipnvote:pending-join-name";
+
+type OAuthProvider = "google" | "apple";
 
 export default function JoinRoomPage() {
   const { code } = useParams<{ code: string }>();
@@ -14,9 +18,18 @@ export default function JoinRoomPage() {
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
   const [joining, setJoining] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<OAuthProvider | null>(null);
 
-  async function joinCurrentUser() {
+  async function joinCurrentUser(userId: string) {
     const supabase = createClient();
+    const pendingName = window.sessionStorage.getItem(PENDING_NAME_KEY)?.trim();
+
+    if (pendingName) {
+      await supabase.auth.updateUser({ data: { display_name: pendingName } });
+      await supabase.from("profiles").update({ display_name: pendingName }).eq("id", userId);
+      window.sessionStorage.removeItem(PENDING_NAME_KEY);
+    }
+
     const { data, error: joinError } = await supabase.rpc("join_group", {
       p_invite_code: inviteCode,
     });
@@ -41,7 +54,7 @@ export default function JoinRoomPage() {
 
       if (auth.user) {
         setJoining(true);
-        await joinCurrentUser();
+        await joinCurrentUser(auth.user.id);
         return;
       }
 
@@ -52,30 +65,37 @@ export default function JoinRoomPage() {
     return () => { cancelled = true; };
   }, [inviteCode]);
 
-  async function joinAsGuest(event: FormEvent) {
-    event.preventDefault();
+  async function continueWith(provider: OAuthProvider) {
     const displayName = name.trim();
-    if (!displayName) return;
-
-    setError("");
-    setJoining(true);
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInAnonymously({
-      options: { data: { display_name: displayName } },
-    });
-
-    if (authError) {
-      setError(authError.message);
-      setJoining(false);
+    if (!displayName) {
+      setError("Enter your name first.");
       return;
     }
 
-    await joinCurrentUser();
+    setError("");
+    setOauthProvider(provider);
+    window.sessionStorage.setItem(PENDING_NAME_KEY, displayName);
+
+    const supabase = createClient();
+    const next = `/join/${encodeURIComponent(inviteCode)}`;
+    const callback = new URL("/auth/callback", window.location.origin);
+    callback.searchParams.set("next", next);
+
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: callback.toString() },
+    });
+
+    if (authError) {
+      window.sessionStorage.removeItem(PENDING_NAME_KEY);
+      setError(authError.message);
+      setOauthProvider(null);
+    }
   }
 
   const next = `/join/${encodeURIComponent(inviteCode)}`;
   const loginHref = `/auth?next=${encodeURIComponent(next)}`;
-  const signupHref = `/auth?mode=signup&next=${encodeURIComponent(next)}`;
+  const signupHref = `/auth?mode=signup&next=${encodeURIComponent(next)}&name=${encodeURIComponent(name.trim())}`;
 
   return (
     <main className="auth-wrap">
@@ -91,35 +111,55 @@ export default function JoinRoomPage() {
         ) : (
           <>
             <h1>Join the group</h1>
-            <p>No account needed. Enter your name and start voting.</p>
+            <p>Enter your name, then use a trusted sign-in so your chips stay tied to you.</p>
 
-            <form onSubmit={joinAsGuest}>
-              <label className="field">
-                Your name
-                <input
-                  className="input"
-                  placeholder="Alex"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={50}
-                  autoComplete="name"
-                  required
-                />
-              </label>
-              {error && <div className="error">{error}</div>}
-              <button className="button" style={{ width: "100%", marginTop: 18 }} disabled={joining}>
-                <UserRound size={17} /> Join as guest
-              </button>
-            </form>
+            <label className="field">
+              Your name
+              <input
+                className="input"
+                placeholder="Alex"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={50}
+                autoComplete="name"
+                required
+              />
+            </label>
+
+            {error && <div className="error">{error}</div>}
+
+            <button
+              type="button"
+              className="button"
+              style={{ width: "100%", marginTop: 18 }}
+              onClick={() => continueWith("google")}
+              disabled={oauthProvider !== null}
+            >
+              <ShieldCheck size={17} /> {oauthProvider === "google" ? "Opening Google…" : "Continue with Google"}
+            </button>
+
+            <button
+              type="button"
+              className="button secondary"
+              style={{ width: "100%", marginTop: 8 }}
+              onClick={() => continueWith("apple")}
+              disabled={oauthProvider !== null}
+            >
+              {oauthProvider === "apple" ? "Opening Apple…" : "Continue with Apple"}
+            </button>
 
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "14px 0 0", lineHeight: 1.5 }}>
-              Guests start with 100 chips and keep earning chips on this browser. You can save your account later without losing them.
+              Your starting chips and daily chip balance stay attached to the same account. There is no guest chip reset.
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 20 }}>
-              <Link className="button secondary" href={loginHref} style={{ justifyContent: "center" }}>Sign in</Link>
-              <Link className="button secondary" href={signupHref} style={{ justifyContent: "center" }}>Create account</Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "22px 0 14px", color: "var(--muted)", fontSize: 11, fontWeight: 800 }}>
+              <span style={{ height: 1, background: "rgba(23,24,20,.12)", flex: 1 }} />OR<span style={{ height: 1, background: "rgba(23,24,20,.12)", flex: 1 }} />
             </div>
+
+            <Link className="button secondary" href={signupHref} style={{ width: "100%", justifyContent: "center" }}>Use email instead</Link>
+            <p style={{ textAlign: "center", fontSize: 12, color: "var(--muted)", marginTop: 14 }}>
+              Already have an account? <Link href={loginHref} style={{ fontWeight: 850 }}>Sign in</Link>
+            </p>
           </>
         )}
       </div>
