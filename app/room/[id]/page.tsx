@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, Check, Coins, Copy, Plus, Sparkles, Trash2, Users, X } from "lucide-react";
+import { Archive, ArrowLeft, CalendarDays, Check, Coins, Copy, Plus, Sparkles, Users, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Group = { id: string; name: string; invite_code: string };
-type GroupEvent = { id: string; title: string; event_date: string | null; voting_deadline: string | null; created_by: string; created_at: string };
+type GroupEvent = { id: string; title: string; event_date: string | null; voting_deadline: string | null; archived_at: string | null; created_by: string; created_at: string };
 type Wallet = { available_chips: number; daily_chips: number; bank_cap: number; last_accrual_date: string };
 type Score = {
   id: string;
@@ -142,9 +142,12 @@ export default function RoomPage() {
     setError("");
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return router.push("/auth");
+
+    const { error: archiveSweepError } = await supabase.rpc("auto_archive_expired_events", { p_group_id: id });
+
     const [groupResult, eventsResult, scoresResult, votesResult, walletResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
       supabase.from("groups").select("id,name,invite_code").eq("id", id).single(),
-      supabase.from("events").select("id,title,event_date,voting_deadline,created_by,created_at").eq("group_id", id).order("created_at", { ascending: true }),
+      supabase.from("events").select("id,title,event_date,voting_deadline,archived_at,created_by,created_at").eq("group_id", id).order("created_at", { ascending: true }),
       supabase.from("plan_scores").select("*").eq("group_id", id),
       supabase.rpc("get_my_vote_allocations", { p_group_id: id }),
       supabase.rpc("get_my_chip_wallet", { p_group_id: id }).single(),
@@ -163,6 +166,14 @@ export default function RoomPage() {
     setGroup(groupResult.data as Group);
     const today = localDateKey();
     const sortedEvents = ((eventsResult.data ?? []) as GroupEvent[]).sort((a, b) => {
+      const aArchived = Boolean(a.archived_at);
+      const bArchived = Boolean(b.archived_at);
+      if (aArchived !== bArchived) return aArchived ? 1 : -1;
+
+      if (aArchived && bArchived) {
+        return (b.archived_at ?? "").localeCompare(a.archived_at ?? "") || b.created_at.localeCompare(a.created_at);
+      }
+
       const aExpired = Boolean(a.event_date && a.event_date < today);
       const bExpired = Boolean(b.event_date && b.event_date < today);
       if (aExpired !== bExpired) return aExpired ? 1 : -1;
@@ -195,7 +206,8 @@ export default function RoomPage() {
       setScheduleSlotMinutes(loadedSchedule.slot_minutes);
       setScheduleTimezone(loadedSchedule.timezone);
     }
-    if (eventsResult.error) setError(`Event error: ${eventsResult.error.message}`);
+    if (archiveSweepError) setError(`Archive error: ${archiveSweepError.message}`);
+    else if (eventsResult.error) setError(`Event error: ${eventsResult.error.message}`);
     else if (scoresResult.error) setError(scoresResult.error.message);
     else if (votesResult.error) setError(votesResult.error.message);
     else if (walletResult.error) setError(`Chip bank error: ${walletResult.error.message}`);
@@ -279,12 +291,12 @@ export default function RoomPage() {
     await loadRoom();
   }
 
-  async function deleteEvent(groupEvent: GroupEvent) {
-    const confirmed = window.confirm(`Delete “${groupEvent.title}” and all of its activities and results?`);
+  async function archiveEvent(groupEvent: GroupEvent) {
+    const confirmed = window.confirm(`Archive “${groupEvent.title}”?`);
     if (!confirmed) return;
     setError("");
-    const { error: deleteError } = await supabase.from("events").delete().eq("id", groupEvent.id).eq("group_id", id);
-    if (deleteError) return setError(deleteError.message);
+    const { error: archiveError } = await supabase.rpc("archive_event", { p_event_id: groupEvent.id });
+    if (archiveError) return setError(archiveError.message);
     await loadRoom();
   }
 
@@ -430,23 +442,26 @@ export default function RoomPage() {
                   const votingEnded = deadlineMs !== null && Date.now() >= deadlineMs;
                   const resultsVisible = votingEnded || groupEvent.voting_deadline === null;
                   const expiredEvent = Boolean(groupEvent.event_date && groupEvent.event_date < localDateKey());
-                  const canDeleteEvent = isOwner || groupEvent.created_by === currentUserId;
+                  const archivedEvent = Boolean(groupEvent.archived_at);
+                  const canArchiveEvent = isOwner && votingEnded && !archivedEvent;
                   const eventPlans = scores
                     .filter((plan) => plan.event_id === groupEvent.id)
                     .sort((a, b) => resultsVisible
                       ? b.total_score - a.total_score || a.created_at.localeCompare(b.created_at)
                       : a.created_at.localeCompare(b.created_at));
                   return (
-                    <article className="event-card" key={groupEvent.id}>
+                    <article className="event-card" key={groupEvent.id} style={archivedEvent ? { opacity: 0.72 } : undefined}>
                       <div className="event-card-head">
                         <div>
                           <div className={groupEvent.event_date ? "event-date-pill" : "event-date-pill tbd"}><CalendarDays size={14} /> {formatEventDate(groupEvent.event_date)}</div>
                           <h2>{groupEvent.title}</h2>
-                          {groupEvent.voting_deadline && <p className="event-budget-copy">{votingEnded ? "Voting ended" : `Voting ends ${formatVotingDeadline(groupEvent.voting_deadline)}`}</p>}
+                          {archivedEvent
+                            ? <p className="event-budget-copy">Archived</p>
+                            : groupEvent.voting_deadline && <p className="event-budget-copy">{votingEnded ? "Voting ended" : `Voting ends ${formatVotingDeadline(groupEvent.voting_deadline)}`}</p>}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          {!votingEnded && !expiredEvent && <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>}
-                          {expiredEvent && canDeleteEvent && <button className="button secondary" onClick={() => deleteEvent(groupEvent)}><Trash2 size={16} /> Delete</button>}
+                          {!votingEnded && !expiredEvent && !archivedEvent && <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>}
+                          {canArchiveEvent && <button className="button secondary" onClick={() => archiveEvent(groupEvent)}><Archive size={16} /> Archive</button>}
                         </div>
                       </div>
 
@@ -468,7 +483,7 @@ export default function RoomPage() {
                               </div>
                               {resultsVisible && <div className="total"><small>Score</small>{plan.total_score}</div>}
                             </div>
-                            {!votingEnded && !expiredEvent && (
+                            {!votingEnded && !expiredEvent && !archivedEvent && (
                               <div className="vote-control">
                                 <div className="range-wrap">
                                   <span>Chips</span>
