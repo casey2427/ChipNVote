@@ -39,4 +39,27 @@ returns void
 language plpgsql
 security definer
 set search_path = public
-as $$;
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'You must be signed in';
+  end if;
+
+  if not exists (
+    select 1
+    from public.group_members
+    where group_id = p_group_id
+      and user_id = auth.uid()
+      and role = 'owner'
+  ) then
+    raise exception 'Only the group owner can delete this group';
+  end if;
+
+  delete from public.groups where id = p_group_id;
+end;
+$$;
+
+revoke execute on function public.leave_group(uuid) from public, anon;
+revoke execute on function public.delete_group(uuid) from public, anon;
+grant execute on function public.leave_group(uuid) to authenticated;
+grant execute on function public.delete_group(uuid) to authenticated;
