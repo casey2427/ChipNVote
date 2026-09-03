@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { ArrowRight, Coins, LogOut, Plus, Users } from "lucide-react";
+import { ArrowRight, Coins, LogOut, Plus, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type Group = { id: string; name: string; invite_code: string; chip_budget: number };
+type Group = { id: string; name: string; invite_code: string; chip_budget: number; role: "owner" | "member" };
 
 export default function Dashboard() {
   const router = useRouter();
@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [newName, setNewName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busyGroupId, setBusyGroupId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const supabase = createClient();
 
@@ -22,10 +23,10 @@ export default function Dashboard() {
     if (!auth.user) return router.push("/auth");
     const { data, error: queryError } = await supabase
       .from("group_members")
-      .select("groups(id,name,invite_code,chip_budget)")
+      .select("role,groups(id,name,invite_code,chip_budget)")
       .eq("user_id", auth.user.id);
     if (queryError) setError(queryError.message);
-    const rows = (data ?? []).flatMap((row: any) => row.groups ? [row.groups] : []);
+    const rows = (data ?? []).flatMap((row: any) => row.groups ? [{ ...row.groups, role: row.role }] : []);
     setGroups(rows);
     setLoading(false);
   }, [router]);
@@ -48,6 +49,23 @@ export default function Dashboard() {
     if (rpcError) return setError(rpcError.message);
     setJoinCode("");
     router.push(`/room/${data}`);
+  }
+
+  async function removeGroup(group: Group) {
+    const deleting = group.role === "owner";
+    const confirmed = window.confirm(
+      deleting
+        ? `Delete “${group.name}”? This permanently removes the group, its plans, votes, and availability.`
+        : `Leave “${group.name}”? Your votes and availability in this group will be removed.`,
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setBusyGroupId(group.id);
+    const { error: rpcError } = await supabase.rpc(deleting ? "delete_group" : "leave_group", { p_group_id: group.id });
+    setBusyGroupId(null);
+    if (rpcError) return setError(rpcError.message);
+    setGroups((current) => current.filter((item) => item.id !== group.id));
   }
 
   async function logout() {
@@ -80,10 +98,24 @@ export default function Dashboard() {
           <div className="empty"><Users size={32} /><h2>No groups yet</h2><p>Create one above or ask a friend for their room code.</p></div>
         ) : (
           <div className="grid">{groups.map((group, i) => (
-            <Link href={`/room/${group.id}`} className="group-card" key={group.id}>
-              <div><div className="group-emoji">{["🎉", "✈️", "🍜", "🌴"][i % 4]}</div><h2>{group.name}</h2><p>Room code: {group.invite_code}</p></div>
-              <strong>Open room <ArrowRight size={16} style={{ verticalAlign: "middle" }} /></strong>
-            </Link>
+            <div className="group-card" key={group.id}>
+              <Link href={`/room/${group.id}`} style={{ flex: 1 }}>
+                <div><div className="group-emoji">{["🎉", "✈️", "🍜", "🌴"][i % 4]}</div><h2>{group.name}</h2><p>Room code: {group.invite_code}</p></div>
+              </Link>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", marginTop: 18 }}>
+                <Link href={`/room/${group.id}`} style={{ fontWeight: 850 }}>Open room <ArrowRight size={16} style={{ verticalAlign: "middle" }} /></Link>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => void removeGroup(group)}
+                  disabled={busyGroupId === group.id}
+                  style={{ padding: "9px 13px", color: group.role === "owner" ? "#b83131" : "var(--muted)" }}
+                >
+                  {group.role === "owner" && <Trash2 size={14} />}
+                  {busyGroupId === group.id ? "Working…" : group.role === "owner" ? "Delete group" : "Leave group"}
+                </button>
+              </div>
+            </div>
           ))}</div>
         )}
       </section>
