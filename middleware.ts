@@ -6,6 +6,12 @@ function safeNextPath(value: string | null) {
   return value;
 }
 
+function redirectWithCookies(url: URL, source: NextResponse) {
+  const redirect = NextResponse.redirect(url);
+  source.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+  return redirect;
+}
+
 export async function middleware(request: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
     return NextResponse.next();
@@ -27,8 +33,8 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  // Calling getUser on normal page visits lets Supabase refresh an expired access
-  // token from the long-lived refresh session and writes the refreshed cookies back.
+  // Refresh the Supabase session on normal page visits so people stay signed in
+  // across browser restarts until they explicitly log out or the refresh session expires.
   const { data } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
   const protectedRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/room");
@@ -39,7 +45,7 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/auth";
     url.search = "";
     url.searchParams.set("next", requestedPath);
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url, response);
   }
 
   if (data.user && pathname === "/auth") {
@@ -47,14 +53,14 @@ export async function middleware(request: NextRequest) {
     const nextPath = safeNextPath(request.nextUrl.searchParams.get("next"));
     url.pathname = nextPath.split("?")[0];
     url.search = nextPath.includes("?") ? `?${nextPath.split("?").slice(1).join("?")}` : "";
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url, response);
   }
 
   if (data.user && pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url, response);
   }
 
   return response;
