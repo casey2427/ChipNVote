@@ -6,13 +6,15 @@ import { ArrowLeft, CalendarDays, Check, Coins, Copy, Plus, Sparkles, Users, X }
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type Group = { id: string; name: string; invite_code: string; chip_budget: number };
+type ResetMode = "monthly" | "weekly" | "event";
+type Group = { id: string; name: string; invite_code: string; chip_budget: number; chip_reset_mode: ResetMode };
+type GroupEvent = { id: string; title: string; event_date: string | null; created_at: string };
 type Score = {
   id: string;
+  event_id: string;
   title: string;
   description: string | null;
   location: string | null;
-  planned_for: string | null;
   regular_points: number;
   super_votes: number;
   supporters: number;
@@ -31,18 +33,6 @@ type ScheduleSettings = {
 };
 type Availability = { user_id: string; slot_key: string; preference: 1 | 2 };
 type RoomTab = "vote" | "schedule";
-
-function formatPlanTime(value: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
 
 function localDateKey(offset = 0) {
   const date = new Date();
@@ -74,6 +64,12 @@ function formatDay(dateKey: string) {
   return new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(new Date(year, month - 1, day, 12));
 }
 
+function formatEventDate(dateKey: string | null) {
+  if (!dateKey) return "Date TBD";
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(year, month - 1, day, 12));
+}
+
 function formatMinuteOfDay(totalMinutes: number) {
   const date = new Date(2000, 0, 1, Math.floor(totalMinutes / 60), totalMinutes % 60);
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
@@ -91,11 +87,18 @@ function formatSlotLabel(slotKey: string) {
   return `${formatDay(date)} at ${formatMinuteOfDay(hour * 60 + minute)}`;
 }
 
+function resetLabel(mode: ResetMode) {
+  if (mode === "weekly") return "weekly";
+  if (mode === "event") return "per event";
+  return "monthly";
+}
+
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const supabase = createClient();
   const [group, setGroup] = useState<Group | null>(null);
+  const [events, setEvents] = useState<GroupEvent[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [drafts, setDrafts] = useState<Record<string, number>>({});
@@ -114,11 +117,14 @@ export default function RoomPage() {
   const [scheduleSlotMinutes, setScheduleSlotMinutes] = useState<30 | 60>(60);
   const [scheduleTimezone, setScheduleTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time");
   const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDate, setEventDate] = useState("");
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [location, setLocation] = useState("");
-  const [plannedFor, setPlannedFor] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -128,10 +134,11 @@ export default function RoomPage() {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return router.push("/auth");
     const month = new Date().toISOString().slice(0, 7) + "-01";
-    const [groupResult, scoresResult, votesResult, superResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
-      supabase.from("groups").select("id,name,invite_code,chip_budget").eq("id", id).single(),
+    const [groupResult, eventsResult, scoresResult, votesResult, superResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
+      supabase.from("groups").select("id,name,invite_code,chip_budget,chip_reset_mode").eq("id", id).single(),
+      supabase.from("events").select("id,title,event_date,created_at").eq("group_id", id).order("created_at", { ascending: true }),
       supabase.from("plan_scores").select("*").eq("group_id", id).order("total_score", { ascending: false }),
-      supabase.from("votes").select("plan_id,chips").eq("group_id", id).eq("user_id", auth.user.id).eq("month_key", month),
+      supabase.rpc("get_my_vote_allocations", { p_group_id: id }),
       supabase.from("super_votes").select("plan_id").eq("group_id", id).eq("user_id", auth.user.id).eq("month_key", month).maybeSingle(),
       supabase.from("group_members").select("user_id", { count: "exact", head: true }).eq("group_id", id),
       supabase.from("group_members").select("role").eq("group_id", id).eq("user_id", auth.user.id).single(),
@@ -145,9 +152,16 @@ export default function RoomPage() {
     }
     setCurrentUserId(auth.user.id);
     setCurrentRole(membershipResult.data?.role ?? "member");
-    setGroup(groupResult.data);
+    setGroup(groupResult.data as Group);
+    const sortedEvents = ((eventsResult.data ?? []) as GroupEvent[]).sort((a, b) => {
+      if (a.event_date && b.event_date) return a.event_date.localeCompare(b.event_date) || a.created_at.localeCompare(b.created_at);
+      if (a.event_date) return -1;
+      if (b.event_date) return 1;
+      return a.created_at.localeCompare(b.created_at);
+    });
+    setEvents(sortedEvents);
     setScores((scoresResult.data ?? []) as Score[]);
-    const next = Object.fromEntries((votesResult.data ?? []).map((vote) => [vote.plan_id, vote.chips]));
+    const next = Object.fromEntries(((votesResult.data ?? []) as { plan_id: string; chips: number }[]).map((vote) => [vote.plan_id, vote.chips]));
     setAllocations(next);
     setDrafts(next);
     setSuperPlan(superResult.data?.plan_id ?? null);
@@ -163,18 +177,26 @@ export default function RoomPage() {
       setScheduleSlotMinutes(loadedSchedule.slot_minutes);
       setScheduleTimezone(loadedSchedule.timezone);
     }
-    if (scheduleResult.error) setError(`Scheduling error: ${scheduleResult.error.message}`);
+    if (eventsResult.error) setError(`Event error: ${eventsResult.error.message}`);
+    else if (scoresResult.error) setError(scoresResult.error.message);
+    else if (votesResult.error) setError(votesResult.error.message);
+    else if (scheduleResult.error) setError(`Scheduling error: ${scheduleResult.error.message}`);
     else if (availabilityResult.error) setError(`Scheduling error: ${availabilityResult.error.message}`);
     setLoading(false);
   }, [id, router]);
 
   useEffect(() => { void loadRoom(); }, [loadRoom]);
 
-  const spent = useMemo(() => Object.values(allocations).reduce((sum, value) => sum + value, 0), [allocations]);
   const budget = group?.chip_budget ?? 100;
-  const remaining = budget - spent;
+  const spent = useMemo(() => Object.values(allocations).reduce((sum, value) => sum + value, 0), [allocations]);
+  const remaining = Math.max(0, budget - spent);
   const remainingPercent = Math.max(0, Math.min(100, (remaining / budget) * 100));
   const isOwner = currentRole === "owner";
+  const eventSpent = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const plan of scores) totals[plan.event_id] = (totals[plan.event_id] ?? 0) + (allocations[plan.id] ?? 0);
+    return totals;
+  }, [scores, allocations]);
 
   const scheduleDates = useMemo(
     () => scheduleSettings ? dateKeysBetween(scheduleSettings.start_date, scheduleSettings.end_date) : [],
@@ -206,6 +228,19 @@ export default function RoomPage() {
     .sort((a, b) => b.available - a.available || b.preferred - a.preferred || a.key.localeCompare(b.key))
     .slice(0, 3), [validSlotKeys, scheduleSummary]);
 
+  function remainingForEvent(eventId: string) {
+    if (group?.chip_reset_mode !== "event") return remaining;
+    return Math.max(0, budget - (eventSpent[eventId] ?? 0));
+  }
+
+  function openPlanModal(eventId: string) {
+    setActiveEventId(eventId);
+    setTitle("");
+    setDetails("");
+    setLocation("");
+    setShowPlanModal(true);
+  }
+
   async function saveVote(planId: string) {
     const chips = drafts[planId] ?? 0;
     const { error: rpcError } = await supabase.rpc("set_plan_vote", { p_plan_id: planId, p_chips: chips });
@@ -219,24 +254,43 @@ export default function RoomPage() {
     await loadRoom();
   }
 
+  async function addEvent(event: FormEvent) {
+    event.preventDefault();
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return;
+    const { error: insertError } = await supabase.from("events").insert({
+      group_id: id,
+      created_by: auth.user.id,
+      title: eventTitle.trim(),
+      event_date: eventDate || null,
+    });
+    if (insertError) return setError(insertError.message);
+    setEventTitle("");
+    setEventDate("");
+    setShowEventModal(false);
+    await loadRoom();
+  }
+
   async function addPlan(event: FormEvent) {
     event.preventDefault();
+    if (!activeEventId) return;
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return;
     const { error: insertError } = await supabase.from("plans").insert({
       group_id: id,
+      event_id: activeEventId,
       created_by: auth.user.id,
       title,
       description: details || null,
       location: location || null,
-      planned_for: plannedFor ? new Date(plannedFor).toISOString() : null,
+      planned_for: null,
     });
     if (insertError) return setError(insertError.message);
     setTitle("");
     setDetails("");
     setLocation("");
-    setPlannedFor("");
-    setShowModal(false);
+    setActiveEventId(null);
+    setShowPlanModal(false);
     await loadRoom();
   }
 
@@ -322,68 +376,92 @@ export default function RoomPage() {
         <aside>
           <Link href="/dashboard" style={{ display: "inline-flex", gap: 7, alignItems: "center", color: "var(--muted)", fontSize: 13, fontWeight: 800, marginBottom: 16 }}><ArrowLeft size={15} /> All groups</Link>
           <div className="wallet">
-            <div className="eyebrow" style={{ color: "rgba(255,255,255,.48)" }}>Your monthly stash</div>
-            <div className="wallet-number">{remaining}</div>
-            <small>chips remaining</small>
-            <div className="meter"><span style={{ width: `${remainingPercent}%` }} /></div>
-            <small>{spent} committed · {budget} total</small>
+            <div className="eyebrow" style={{ color: "rgba(255,255,255,.48)" }}>Your {resetLabel(group.chip_reset_mode)} stash</div>
+            <div className="wallet-number">{group.chip_reset_mode === "event" ? budget : remaining}</div>
+            <small>{group.chip_reset_mode === "event" ? "chips available in each event" : "chips remaining"}</small>
+            <div className="meter"><span style={{ width: `${group.chip_reset_mode === "event" ? 100 : remainingPercent}%` }} /></div>
+            <small>{group.chip_reset_mode === "event" ? `${budget} fresh chips for every event` : `${spent} committed · ${budget} total`}</small>
             <div className="super-box">
               <div className="star">★</div>
-              <div><strong>Super Vote</strong><br /><small>{superPlan ? "Used this month · tap another plan to move it" : `Worth ${memberCount * 20} points`}</small></div>
+              <div><strong>Super Vote</strong><br /><small>{superPlan ? "Used this month · tap another activity to move it" : `Worth ${memberCount * 20} points`}</small></div>
             </div>
           </div>
         </aside>
 
         <section>
           <div className="room-head">
-            <div><div className="eyebrow"><span className="dot" style={{ display: "inline-block", marginRight: 7 }} />{memberCount} members</div><h1 className="room-title">{group.name}</h1></div>
+            <div>
+              <div className="eyebrow"><span className="dot" style={{ display: "inline-block", marginRight: 7 }} />{memberCount} members · {budget} chips {resetLabel(group.chip_reset_mode)}</div>
+              <h1 className="room-title">{group.name}</h1>
+            </div>
             {roomTab === "vote" ? (
-              <button className="button yellow" onClick={() => setShowModal(true)}><Plus size={18} /> Pitch a plan</button>
+              <button className="button yellow" onClick={() => setShowEventModal(true)}><Plus size={18} /> New event</button>
             ) : isOwner ? (
               <button className={scheduleSettings ? "button secondary" : "button yellow"} onClick={() => setShowScheduleSetup(true)}><CalendarDays size={17} /> {scheduleSettings ? "Edit schedule" : "Set up schedule"}</button>
             ) : null}
           </div>
 
           <div className="room-tabs" role="tablist" aria-label="Room tools">
-            <button className={roomTab === "vote" ? "room-tab active" : "room-tab"} onClick={() => setRoomTab("vote")} role="tab" aria-selected={roomTab === "vote"}>Vote on ideas</button>
+            <button className={roomTab === "vote" ? "room-tab active" : "room-tab"} onClick={() => setRoomTab("vote")} role="tab" aria-selected={roomTab === "vote"}>Events & voting</button>
             <button className={roomTab === "schedule" ? "room-tab active" : "room-tab"} onClick={() => setRoomTab("schedule")} role="tab" aria-selected={roomTab === "schedule"}><CalendarDays size={16} /> Find a time</button>
           </div>
 
           {error && <div className="error" style={{ marginBottom: 15 }}>{error}</div>}
 
           {roomTab === "vote" ? (
-            scores.length === 0 ? (
-              <div className="empty"><Sparkles size={32} /><h2>No plans yet</h2><p>Be the first person to pitch something worth leaving the group chat for.</p></div>
-            ) : scores.map((plan, index) => {
-              const current = allocations[plan.id] ?? 0;
-              const draft = drafts[plan.id] ?? current;
-              const max = current + remaining;
-              const activeSuper = superPlan === plan.id;
-              const planTime = formatPlanTime(plan.planned_for);
-              return (
-                <article className="proposal" key={plan.id}>
-                  <div className="proposal-top">
-                    <div className={index === 0 ? "rank first" : "rank"}>{index + 1}</div>
-                    <div>
-                      <h2>{plan.title}</h2>
-                      <p>{[plan.location, plan.description].filter(Boolean).join(" · ") || "Details coming soon"}</p>
-                      {planTime && <p><CalendarDays size={13} style={{ verticalAlign: "middle" }} /> {planTime}</p>}
-                      <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} supporters &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points} chips &nbsp; ★ {plan.super_votes}</p>
-                    </div>
-                    <div className="total"><small>Total score</small>{plan.total_score}</div>
-                  </div>
-                  <div className="vote-control">
-                    <div className="range-wrap">
-                      <span>Your stake</span>
-                      <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="5" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
-                      <span className="count-box">{draft}</span>
-                    </div>
-                    <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
-                    <button className={activeSuper ? "super-button active" : "super-button"} onClick={() => toggleSuper(plan.id)}>{activeSuper ? `★ +${plan.super_value}` : superPlan ? "☆ Move Super Vote" : "☆ Super Vote"}</button>
-                  </div>
-                </article>
-              );
-            })
+            events.length === 0 ? (
+              <div className="empty"><Sparkles size={32} /><h2>No events yet</h2><p>Create a date, trip, occasion, or Date TBD event, then add the activities everyone wants to do.</p><button className="button yellow" style={{ marginTop: 14 }} onClick={() => setShowEventModal(true)}><Plus size={17} /> Create first event</button></div>
+            ) : (
+              <div className="event-list">
+                {events.map((groupEvent) => {
+                  const eventPlans = scores.filter((plan) => plan.event_id === groupEvent.id);
+                  const eventRemaining = remainingForEvent(groupEvent.id);
+                  return (
+                    <article className="event-card" key={groupEvent.id}>
+                      <div className="event-card-head">
+                        <div>
+                          <div className={groupEvent.event_date ? "event-date-pill" : "event-date-pill tbd"}><CalendarDays size={14} /> {formatEventDate(groupEvent.event_date)}</div>
+                          <h2>{groupEvent.title}</h2>
+                          {group.chip_reset_mode === "event" && <p className="event-budget-copy">You have {eventRemaining} of {budget} chips left for this event.</p>}
+                        </div>
+                        <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>
+                      </div>
+
+                      {eventPlans.length === 0 ? (
+                        <div className="event-empty">No activities yet. Add the first option for this event.</div>
+                      ) : eventPlans.map((plan, index) => {
+                        const current = allocations[plan.id] ?? 0;
+                        const draft = drafts[plan.id] ?? current;
+                        const max = current + eventRemaining;
+                        const activeSuper = superPlan === plan.id;
+                        return (
+                          <article className="proposal event-proposal" key={plan.id}>
+                            <div className="proposal-top">
+                              <div className={index === 0 ? "rank first" : "rank"}>{index + 1}</div>
+                              <div>
+                                <h2>{plan.title}</h2>
+                                <p>{[plan.location, plan.description].filter(Boolean).join(" · ") || "Details coming soon"}</p>
+                                <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} supporters &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points} chips &nbsp; ★ {plan.super_votes}</p>
+                              </div>
+                              <div className="total"><small>Total score</small>{plan.total_score}</div>
+                            </div>
+                            <div className="vote-control">
+                              <div className="range-wrap">
+                                <span>Your stake</span>
+                                <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="5" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
+                                <span className="count-box">{draft}</span>
+                              </div>
+                              <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
+                              <button className={activeSuper ? "super-button active" : "super-button"} onClick={() => toggleSuper(plan.id)}>{activeSuper ? `★ +${plan.super_value}` : superPlan ? "☆ Move Super Vote" : "☆ Super Vote"}</button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </article>
+                  );
+                })}
+              </div>
+            )
           ) : (
             <div className="schedule-section">
               {(!scheduleSettings || showScheduleSetup) && isOwner ? (
@@ -474,16 +552,29 @@ export default function RoomPage() {
         </section>
       </div>
 
-      {showModal && (
-        <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowModal(false)}>
+      {showEventModal && (
+        <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowEventModal(false)}>
+          <form className="modal" onSubmit={addEvent}>
+            <button type="button" onClick={() => setShowEventModal(false)} style={{ float: "right", border: 0, background: "transparent", cursor: "pointer" }} aria-label="Close"><X /></button>
+            <h2>Create an event</h2>
+            <p style={{ color: "var(--muted)" }}>Give related activities one place to compete, like Halloween, a birthday, or a trip.</p>
+            <label className="field">Event name<input className="input" placeholder="Halloween trip" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} maxLength={120} required /></label>
+            <label className="field">Date <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} /></label>
+            <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowEventModal(false)}>Cancel</button><button className="button">Create event</button></div>
+          </form>
+        </div>
+      )}
+
+      {showPlanModal && (
+        <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowPlanModal(false)}>
           <form className="modal" onSubmit={addPlan}>
-            <button type="button" onClick={() => setShowModal(false)} style={{ float: "right", border: 0, background: "transparent", cursor: "pointer" }} aria-label="Close"><X /></button>
-            <h2>Pitch the next move</h2><p style={{ color: "var(--muted)" }}>It can be a place, activity, purchase, trip, or anything else the group needs to choose.</p>
-            <label className="field">Plan name<input className="input" placeholder="Beach bonfire" value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
-            <label className="field">Place <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" placeholder="Huntington Beach" value={location} onChange={(e) => setLocation(e.target.value)} /></label>
-            <label className="field">When <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" type="datetime-local" value={plannedFor} onChange={(e) => setPlannedFor(e.target.value)} /></label>
-            <label className="field">Extra details<textarea className="input" rows={3} placeholder="Saturday around sunset" value={details} onChange={(e) => setDetails(e.target.value)} /></label>
-            <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowModal(false)}>Cancel</button><button className="button">Add plan</button></div>
+            <button type="button" onClick={() => setShowPlanModal(false)} style={{ float: "right", border: 0, background: "transparent", cursor: "pointer" }} aria-label="Close"><X /></button>
+            <h2>Add an activity</h2>
+            <p style={{ color: "var(--muted)" }}>Add an option people can put chips behind inside this event.</p>
+            <label className="field">Activity name<input className="input" placeholder="Halloween Horror Nights" value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+            <label className="field">Place <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" placeholder="Universal Studios" value={location} onChange={(e) => setLocation(e.target.value)} /></label>
+            <label className="field">Extra details<textarea className="input" rows={3} placeholder="Go after dinner" value={details} onChange={(e) => setDetails(e.target.value)} /></label>
+            <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowPlanModal(false)}>Cancel</button><button className="button">Add activity</button></div>
           </form>
         </div>
       )}
