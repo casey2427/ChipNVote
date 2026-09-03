@@ -62,15 +62,6 @@ export default function Home() {
         </div>
 
         <div className="demo" aria-label="Example ChipNVote room">
-          <button
-            type="button"
-            className="demo-note"
-            onClick={() => setShowHow(true)}
-            aria-label="Learn how blind voting works"
-            style={{ cursor: "pointer", font: "inherit" }}
-          >
-            Blind until<br />the deadline
-          </button>
           <div className="demo-top">
             <div>
               <div className="eyebrow">Weekend crew · Halloween trip</div>
