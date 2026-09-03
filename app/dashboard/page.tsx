@@ -86,17 +86,18 @@ export default function Dashboard() {
       </nav>
       <section className="shell dashboard">
         <div className="dashboard-head">
-          <div><div className="eyebrow">Your groups</div><h1>Where are we going?</h1></div>
+          <div><div className="eyebrow">Your groups</div><h1>What are we deciding?</h1></div>
         </div>
         <div className="forms-grid">
           <form className="form-card" onSubmit={createGroup}>
             <strong><Plus size={17} style={{ verticalAlign: "middle" }} /> Create group</strong>
             <div className="inline-form"><input className="input" placeholder="Weekend Crew" value={newName} onChange={(e) => setNewName(e.target.value)} required /><button className="button">Create</button></div>
-            <small className="form-hint">You get 10 chips every day. Unused chips roll over.</small>
+            <small className="form-hint">Start with 100 chips. Get 10 more every day. Unused chips roll over.</small>
           </form>
           <form className="form-card" onSubmit={joinGroup}>
             <strong><Users size={17} style={{ verticalAlign: "middle" }} /> Join group</strong>
             <div className="inline-form"><input className="input" placeholder="ABC123" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} required /><button className="button">Join</button></div>
+            <small className="form-hint">Use the room code from your invite link.</small>
           </form>
         </div>
         {error && <div className="error" style={{ marginBottom: 18 }}>{error}</div>}
@@ -113,7 +114,7 @@ export default function Dashboard() {
                 </div>
               </Link>
               <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", marginTop: 18 }}>
-                <Link href={`/room/${group.id}`} style={{ fontWeight: 850 }}>Open room <ArrowRight size={16} style={{ verticalAlign: "middle" }} /></Link>
+                <Link href={`/room/${group.id}`} style={{ fontWeight: 850 }}>Open group <ArrowRight size={16} style={{ verticalAlign: "middle" }} /></Link>
                 <button
                   type="button"
                   className="button secondary"
