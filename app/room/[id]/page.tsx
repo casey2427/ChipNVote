@@ -576,7 +576,29 @@ export default function RoomPage() {
             <h2>Create event</h2>
             <label className="field">Event name<input className="input" placeholder="Halloween trip" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} maxLength={120} required /></label>
             <label className="field">Date <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} /></label>
-            <label className="field">Voting deadline<input className="input" type="datetime-local" value={eventDeadline} onChange={(e) => setEventDeadline(e.target.value)} /></label>
+            <div className="field">
+              <span>Voting deadline</span>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <input
+                  className="input"
+                  aria-label="Voting deadline date"
+                  type="date"
+                  min={localDateKey()}
+                  value={eventDeadline.slice(0, 10)}
+                  onChange={(e) => setEventDeadline(`${e.target.value}T${eventDeadline.slice(11, 16) || "18:00"}`)}
+                  required
+                />
+                <input
+                  className="input"
+                  aria-label="Voting deadline time"
+                  type="time"
+                  step="60"
+                  value={eventDeadline.slice(11, 16)}
+                  onChange={(e) => setEventDeadline(`${eventDeadline.slice(0, 10) || localDateKey()}T${e.target.value}`)}
+                  required
+                />
+              </div>
+            </div>
             <p style={{ color: "var(--muted)", fontSize: 12, margin: "10px 0 0" }}>Results stay hidden until the deadline.</p>
             <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowEventModal(false)}>Cancel</button><button className="button">Create</button></div>
           </form>
