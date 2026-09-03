@@ -7,7 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Group = { id: string; name: string; invite_code: string };
-type GroupEvent = { id: string; title: string; event_date: string | null; created_at: string };
+type GroupEvent = { id: string; title: string; event_date: string | null; voting_deadline: string | null; created_at: string };
 type Wallet = { available_chips: number; daily_chips: number; bank_cap: number; last_accrual_date: string };
 type Score = {
   id: string;
@@ -15,6 +15,7 @@ type Score = {
   title: string;
   description: string | null;
   location: string | null;
+  created_at: string;
   regular_points: number;
   super_votes: number;
   supporters: number;
@@ -43,6 +44,17 @@ function localDateKey(offset = 0) {
   return `${year}-${month}-${day}`;
 }
 
+function defaultVotingDeadline() {
+  const date = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  date.setSeconds(0, 0);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
 function dateKeysBetween(start: string, end: string) {
   const output: string[] = [];
   const [sy, sm, sd] = start.split("-").map(Number);
@@ -68,6 +80,10 @@ function formatEventDate(dateKey: string | null) {
   if (!dateKey) return "Date TBD";
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(year, month - 1, day, 12));
+}
+
+function formatVotingDeadline(value: string) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
 function formatMinuteOfDay(totalMinutes: number) {
@@ -117,6 +133,7 @@ export default function RoomPage() {
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState("");
   const [eventDate, setEventDate] = useState("");
+  const [eventDeadline, setEventDeadline] = useState(defaultVotingDeadline);
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [location, setLocation] = useState("");
@@ -131,8 +148,8 @@ export default function RoomPage() {
     const month = new Date().toISOString().slice(0, 7) + "-01";
     const [groupResult, eventsResult, scoresResult, votesResult, walletResult, superResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
       supabase.from("groups").select("id,name,invite_code").eq("id", id).single(),
-      supabase.from("events").select("id,title,event_date,created_at").eq("group_id", id).order("created_at", { ascending: true }),
-      supabase.from("plan_scores").select("*").eq("group_id", id).order("total_score", { ascending: false }),
+      supabase.from("events").select("id,title,event_date,voting_deadline,created_at").eq("group_id", id).order("created_at", { ascending: true }),
+      supabase.from("plan_scores").select("*").eq("group_id", id),
       supabase.rpc("get_my_vote_allocations", { p_group_id: id }),
       supabase.rpc("get_my_chip_wallet", { p_group_id: id }).single(),
       supabase.from("super_votes").select("plan_id").eq("group_id", id).eq("user_id", auth.user.id).eq("month_key", month).maybeSingle(),
@@ -184,6 +201,10 @@ export default function RoomPage() {
   }, [id, router]);
 
   useEffect(() => { void loadRoom(); }, [loadRoom]);
+  useEffect(() => {
+    const timer = window.setInterval(() => void loadRoom(), 60000);
+    return () => window.clearInterval(timer);
+  }, [loadRoom]);
 
   const remaining = wallet?.available_chips ?? 0;
   const bankCap = wallet?.bank_cap ?? 500;
@@ -250,10 +271,12 @@ export default function RoomPage() {
       created_by: auth.user.id,
       title: eventTitle.trim(),
       event_date: eventDate || null,
+      voting_deadline: eventDeadline ? new Date(eventDeadline).toISOString() : null,
     });
     if (insertError) return setError(insertError.message);
     setEventTitle("");
     setEventDate("");
+    setEventDeadline(defaultVotingDeadline());
     setShowEventModal(false);
     await loadRoom();
   }
@@ -400,15 +423,23 @@ export default function RoomPage() {
             ) : (
               <div className="event-list">
                 {events.map((groupEvent) => {
-                  const eventPlans = scores.filter((plan) => plan.event_id === groupEvent.id);
+                  const deadlineMs = groupEvent.voting_deadline ? new Date(groupEvent.voting_deadline).getTime() : null;
+                  const votingEnded = deadlineMs !== null && Date.now() >= deadlineMs;
+                  const resultsVisible = votingEnded || groupEvent.voting_deadline === null;
+                  const eventPlans = scores
+                    .filter((plan) => plan.event_id === groupEvent.id)
+                    .sort((a, b) => resultsVisible
+                      ? b.total_score - a.total_score || a.created_at.localeCompare(b.created_at)
+                      : a.created_at.localeCompare(b.created_at));
                   return (
                     <article className="event-card" key={groupEvent.id}>
                       <div className="event-card-head">
                         <div>
                           <div className={groupEvent.event_date ? "event-date-pill" : "event-date-pill tbd"}><CalendarDays size={14} /> {formatEventDate(groupEvent.event_date)}</div>
                           <h2>{groupEvent.title}</h2>
+                          {groupEvent.voting_deadline && <p className="event-budget-copy">{votingEnded ? "Voting ended" : `Voting ends ${formatVotingDeadline(groupEvent.voting_deadline)}`}</p>}
                         </div>
-                        <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>
+                        {!votingEnded && <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>}
                       </div>
 
                       {eventPlans.length === 0 ? (
@@ -422,23 +453,25 @@ export default function RoomPage() {
                         return (
                           <article className="proposal event-proposal" key={plan.id}>
                             <div className="proposal-top">
-                              <div className={index === 0 ? "rank first" : "rank"}>{index + 1}</div>
+                              <div className={resultsVisible && index === 0 ? "rank first" : "rank"}>{index + 1}</div>
                               <div>
                                 <h2>{plan.title}</h2>
                                 {detailsLine && <p>{detailsLine}</p>}
-                                <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points} &nbsp; ★ {plan.super_votes}</p>
+                                {resultsVisible && <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points} &nbsp; ★ {plan.super_votes}</p>}
                               </div>
-                              <div className="total"><small>Score</small>{plan.total_score}</div>
+                              {resultsVisible && <div className="total"><small>Score</small>{plan.total_score}</div>}
                             </div>
-                            <div className="vote-control">
-                              <div className="range-wrap">
-                                <span>Chips</span>
-                                <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="5" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
-                                <span className="count-box">{draft}</span>
+                            {!votingEnded && (
+                              <div className="vote-control">
+                                <div className="range-wrap">
+                                  <span>Chips</span>
+                                  <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="5" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
+                                  <span className="count-box">{draft}</span>
+                                </div>
+                                <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
+                                <button className={activeSuper ? "super-button active" : "super-button"} onClick={() => toggleSuper(plan.id)}>{activeSuper ? `★ +${plan.super_value}` : superPlan ? "☆ Move" : "☆ Super Vote"}</button>
                               </div>
-                              <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
-                              <button className={activeSuper ? "super-button active" : "super-button"} onClick={() => toggleSuper(plan.id)}>{activeSuper ? `★ +${plan.super_value}` : superPlan ? "☆ Move" : "☆ Super Vote"}</button>
-                            </div>
+                            )}
                           </article>
                         );
                       })}
@@ -543,6 +576,8 @@ export default function RoomPage() {
             <h2>Create event</h2>
             <label className="field">Event name<input className="input" placeholder="Halloween trip" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} maxLength={120} required /></label>
             <label className="field">Date <span style={{ color: "var(--muted)", fontWeight: 500 }}>(optional)</span><input className="input" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} /></label>
+            <label className="field">Voting deadline<input className="input" type="datetime-local" value={eventDeadline} onChange={(e) => setEventDeadline(e.target.value)} /></label>
+            <p style={{ color: "var(--muted)", fontSize: 12, margin: "10px 0 0" }}>Results stay hidden until the deadline.</p>
             <div className="modal-actions"><button type="button" className="button secondary" onClick={() => setShowEventModal(false)}>Cancel</button><button className="button">Create</button></div>
           </form>
         </div>
