@@ -6,8 +6,6 @@ import { FormEvent, Suspense, useMemo, useState } from "react";
 import { Coins, ShieldCheck } from "lucide-react";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
-type OAuthProvider = "google" | "apple";
-
 function safeNextPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard";
   return value;
@@ -28,9 +26,9 @@ function AuthForm() {
       : "",
   );
   const [loading, setLoading] = useState(false);
-  const [oauthProvider, setOauthProvider] = useState<OAuthProvider | null>(null);
+  const [openingGoogle, setOpeningGoogle] = useState(false);
 
-  async function continueWith(provider: OAuthProvider) {
+  async function continueWithGoogle() {
     setError("");
     setMessage("");
     if (!isSupabaseConfigured) {
@@ -38,19 +36,19 @@ function AuthForm() {
       return;
     }
 
-    setOauthProvider(provider);
+    setOpeningGoogle(true);
     const supabase = createClient();
     const callback = new URL("/auth/callback", window.location.origin);
     if (nextPath !== "/dashboard") callback.searchParams.set("next", nextPath);
 
     const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider,
+      provider: "google",
       options: { redirectTo: callback.toString() },
     });
 
     if (authError) {
       setError(authError.message);
-      setOauthProvider(null);
+      setOpeningGoogle(false);
     }
   }
 
@@ -110,20 +108,10 @@ function AuthForm() {
         type="button"
         className="button"
         style={{ width: "100%", marginTop: 8 }}
-        onClick={() => continueWith("google")}
-        disabled={oauthProvider !== null || loading}
+        onClick={continueWithGoogle}
+        disabled={openingGoogle || loading}
       >
-        <ShieldCheck size={17} /> {oauthProvider === "google" ? "Opening Google…" : "Continue with Google"}
-      </button>
-
-      <button
-        type="button"
-        className="button secondary"
-        style={{ width: "100%", marginTop: 8 }}
-        onClick={() => continueWith("apple")}
-        disabled={oauthProvider !== null || loading}
-      >
-        {oauthProvider === "apple" ? "Opening Apple…" : "Continue with Apple"}
+        <ShieldCheck size={17} /> {openingGoogle ? "Opening Google…" : "Continue with Google"}
       </button>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "22px 0 4px", color: "var(--muted)", fontSize: 11, fontWeight: 800 }}>
@@ -136,7 +124,7 @@ function AuthForm() {
         <label className="field">Password<input className="input" type="password" minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
         {error && <div className="error">{error}</div>}
         {message && <div className="success">{message}</div>}
-        <button className="button secondary" style={{ width: "100%", marginTop: 20 }} disabled={loading || oauthProvider !== null}>{loading ? "One second…" : signup ? "Create with email" : "Sign in with email"}</button>
+        <button className="button secondary" style={{ width: "100%", marginTop: 20 }} disabled={loading || openingGoogle}>{loading ? "One second…" : signup ? "Create with email" : "Sign in with email"}</button>
       </form>
 
       {signup && <p style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginTop: 14 }}>New members start with 100 chips in each group and get 10 more every day. Unused chips roll over.</p>}
