@@ -86,22 +86,21 @@ export default function Dashboard() {
       </nav>
       <section className="shell dashboard">
         <div className="dashboard-head">
-          <div><div className="eyebrow">Your friend groups</div><h1>Where are we going?</h1></div>
+          <div><div className="eyebrow">Your groups</div><h1>Where are we going?</h1></div>
         </div>
         <div className="forms-grid">
           <form className="form-card" onSubmit={createGroup}>
-            <strong><Plus size={17} style={{ verticalAlign: "middle" }} /> Create a new group</strong>
+            <strong><Plus size={17} style={{ verticalAlign: "middle" }} /> Create group</strong>
             <div className="inline-form"><input className="input" placeholder="Weekend Crew" value={newName} onChange={(e) => setNewName(e.target.value)} required /><button className="button">Create</button></div>
-            <small className="form-hint">Everyone starts with 10 chips, earns 10 more each day, and unused chips roll over up to a 500-chip bank.</small>
           </form>
           <form className="form-card" onSubmit={joinGroup}>
-            <strong><Users size={17} style={{ verticalAlign: "middle" }} /> Join with a room code</strong>
+            <strong><Users size={17} style={{ verticalAlign: "middle" }} /> Join group</strong>
             <div className="inline-form"><input className="input" placeholder="ABC123" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} required /><button className="button">Join</button></div>
           </form>
         </div>
         {error && <div className="error" style={{ marginBottom: 18 }}>{error}</div>}
         {loading ? <div className="loading">Loading your groups…</div> : groups.length === 0 ? (
-          <div className="empty"><Users size={32} /><h2>No groups yet</h2><p>Create one above or ask a friend for their room code.</p></div>
+          <div className="empty"><Users size={32} /><h2>No groups yet</h2><p>Create one above or join with a room code.</p></div>
         ) : (
           <div className="grid">{groups.map((group, i) => (
             <div className="group-card" key={group.id}>
@@ -110,7 +109,6 @@ export default function Dashboard() {
                   <div className="group-emoji">{["🎉", "✈️", "🍜", "🌴"][i % 4]}</div>
                   <h2>{group.name}</h2>
                   <p>Room code: {group.invite_code}</p>
-                  <p className="group-budget-label">+10 chips/day · rolls over to 500</p>
                 </div>
               </Link>
               <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", marginTop: 18 }}>
