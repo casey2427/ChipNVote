@@ -6,9 +6,9 @@ import { ArrowLeft, CalendarDays, Check, Coins, Copy, Plus, Sparkles, Users, X }
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type ResetMode = "monthly" | "weekly" | "event";
-type Group = { id: string; name: string; invite_code: string; chip_budget: number; chip_reset_mode: ResetMode };
+type Group = { id: string; name: string; invite_code: string };
 type GroupEvent = { id: string; title: string; event_date: string | null; created_at: string };
+type Wallet = { available_chips: number; daily_chips: number; bank_cap: number; last_accrual_date: string };
 type Score = {
   id: string;
   event_id: string;
@@ -87,12 +87,6 @@ function formatSlotLabel(slotKey: string) {
   return `${formatDay(date)} at ${formatMinuteOfDay(hour * 60 + minute)}`;
 }
 
-function resetLabel(mode: ResetMode) {
-  if (mode === "weekly") return "weekly";
-  if (mode === "event") return "per event";
-  return "monthly";
-}
-
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -102,6 +96,7 @@ export default function RoomPage() {
   const [scores, setScores] = useState<Score[]>([]);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [drafts, setDrafts] = useState<Record<string, number>>({});
+  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [superPlan, setSuperPlan] = useState<string | null>(null);
   const [memberCount, setMemberCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState("");
@@ -134,11 +129,12 @@ export default function RoomPage() {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return router.push("/auth");
     const month = new Date().toISOString().slice(0, 7) + "-01";
-    const [groupResult, eventsResult, scoresResult, votesResult, superResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
-      supabase.from("groups").select("id,name,invite_code,chip_budget,chip_reset_mode").eq("id", id).single(),
+    const [groupResult, eventsResult, scoresResult, votesResult, walletResult, superResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
+      supabase.from("groups").select("id,name,invite_code").eq("id", id).single(),
       supabase.from("events").select("id,title,event_date,created_at").eq("group_id", id).order("created_at", { ascending: true }),
       supabase.from("plan_scores").select("*").eq("group_id", id).order("total_score", { ascending: false }),
       supabase.rpc("get_my_vote_allocations", { p_group_id: id }),
+      supabase.rpc("get_my_chip_wallet", { p_group_id: id }).single(),
       supabase.from("super_votes").select("plan_id").eq("group_id", id).eq("user_id", auth.user.id).eq("month_key", month).maybeSingle(),
       supabase.from("group_members").select("user_id", { count: "exact", head: true }).eq("group_id", id),
       supabase.from("group_members").select("role").eq("group_id", id).eq("user_id", auth.user.id).single(),
@@ -164,6 +160,7 @@ export default function RoomPage() {
     const next = Object.fromEntries(((votesResult.data ?? []) as { plan_id: string; chips: number }[]).map((vote) => [vote.plan_id, vote.chips]));
     setAllocations(next);
     setDrafts(next);
+    setWallet((walletResult.data ?? null) as Wallet | null);
     setSuperPlan(superResult.data?.plan_id ?? null);
     setMemberCount(membersResult.count ?? 0);
     const loadedSchedule = (scheduleResult.data ?? null) as ScheduleSettings | null;
@@ -180,6 +177,7 @@ export default function RoomPage() {
     if (eventsResult.error) setError(`Event error: ${eventsResult.error.message}`);
     else if (scoresResult.error) setError(scoresResult.error.message);
     else if (votesResult.error) setError(votesResult.error.message);
+    else if (walletResult.error) setError(`Chip bank error: ${walletResult.error.message}`);
     else if (scheduleResult.error) setError(`Scheduling error: ${scheduleResult.error.message}`);
     else if (availabilityResult.error) setError(`Scheduling error: ${availabilityResult.error.message}`);
     setLoading(false);
@@ -187,16 +185,12 @@ export default function RoomPage() {
 
   useEffect(() => { void loadRoom(); }, [loadRoom]);
 
-  const budget = group?.chip_budget ?? 100;
   const spent = useMemo(() => Object.values(allocations).reduce((sum, value) => sum + value, 0), [allocations]);
-  const remaining = Math.max(0, budget - spent);
-  const remainingPercent = Math.max(0, Math.min(100, (remaining / budget) * 100));
+  const remaining = wallet?.available_chips ?? 0;
+  const bankCap = wallet?.bank_cap ?? 500;
+  const dailyChips = wallet?.daily_chips ?? 10;
+  const remainingPercent = Math.max(0, Math.min(100, (remaining / bankCap) * 100));
   const isOwner = currentRole === "owner";
-  const eventSpent = useMemo(() => {
-    const totals: Record<string, number> = {};
-    for (const plan of scores) totals[plan.event_id] = (totals[plan.event_id] ?? 0) + (allocations[plan.id] ?? 0);
-    return totals;
-  }, [scores, allocations]);
 
   const scheduleDates = useMemo(
     () => scheduleSettings ? dateKeysBetween(scheduleSettings.start_date, scheduleSettings.end_date) : [],
@@ -227,11 +221,6 @@ export default function RoomPage() {
     .filter((slot) => slot.available > 0)
     .sort((a, b) => b.available - a.available || b.preferred - a.preferred || a.key.localeCompare(b.key))
     .slice(0, 3), [validSlotKeys, scheduleSummary]);
-
-  function remainingForEvent(eventId: string) {
-    if (group?.chip_reset_mode !== "event") return remaining;
-    return Math.max(0, budget - (eventSpent[eventId] ?? 0));
-  }
 
   function openPlanModal(eventId: string) {
     setActiveEventId(eventId);
@@ -376,11 +365,12 @@ export default function RoomPage() {
         <aside>
           <Link href="/dashboard" style={{ display: "inline-flex", gap: 7, alignItems: "center", color: "var(--muted)", fontSize: 13, fontWeight: 800, marginBottom: 16 }}><ArrowLeft size={15} /> All groups</Link>
           <div className="wallet">
-            <div className="eyebrow" style={{ color: "rgba(255,255,255,.48)" }}>Your {resetLabel(group.chip_reset_mode)} stash</div>
-            <div className="wallet-number">{group.chip_reset_mode === "event" ? budget : remaining}</div>
-            <small>{group.chip_reset_mode === "event" ? "chips available in each event" : "chips remaining"}</small>
-            <div className="meter"><span style={{ width: `${group.chip_reset_mode === "event" ? 100 : remainingPercent}%` }} /></div>
-            <small>{group.chip_reset_mode === "event" ? `${budget} fresh chips for every event` : `${spent} committed · ${budget} total`}</small>
+            <div className="eyebrow" style={{ color: "rgba(255,255,255,.48)" }}>Your chip bank</div>
+            <div className="wallet-number">{remaining}</div>
+            <small>chips available</small>
+            <div className="meter"><span style={{ width: `${remainingPercent}%` }} /></div>
+            <small>+{dailyChips} every day · unused chips roll over · {bankCap} max</small>
+            <div style={{ marginTop: 8 }}><small>{spent} chips currently committed</small></div>
             <div className="super-box">
               <div className="star">★</div>
               <div><strong>Super Vote</strong><br /><small>{superPlan ? "Used this month · tap another activity to move it" : `Worth ${memberCount * 20} points`}</small></div>
@@ -391,7 +381,7 @@ export default function RoomPage() {
         <section>
           <div className="room-head">
             <div>
-              <div className="eyebrow"><span className="dot" style={{ display: "inline-block", marginRight: 7 }} />{memberCount} members · {budget} chips {resetLabel(group.chip_reset_mode)}</div>
+              <div className="eyebrow"><span className="dot" style={{ display: "inline-block", marginRight: 7 }} />{memberCount} members · +{dailyChips} chips/day · {bankCap} max bank</div>
               <h1 className="room-title">{group.name}</h1>
             </div>
             {roomTab === "vote" ? (
@@ -415,14 +405,12 @@ export default function RoomPage() {
               <div className="event-list">
                 {events.map((groupEvent) => {
                   const eventPlans = scores.filter((plan) => plan.event_id === groupEvent.id);
-                  const eventRemaining = remainingForEvent(groupEvent.id);
                   return (
                     <article className="event-card" key={groupEvent.id}>
                       <div className="event-card-head">
                         <div>
                           <div className={groupEvent.event_date ? "event-date-pill" : "event-date-pill tbd"}><CalendarDays size={14} /> {formatEventDate(groupEvent.event_date)}</div>
                           <h2>{groupEvent.title}</h2>
-                          {group.chip_reset_mode === "event" && <p className="event-budget-copy">You have {eventRemaining} of {budget} chips left for this event.</p>}
                         </div>
                         <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>
                       </div>
@@ -432,7 +420,7 @@ export default function RoomPage() {
                       ) : eventPlans.map((plan, index) => {
                         const current = allocations[plan.id] ?? 0;
                         const draft = drafts[plan.id] ?? current;
-                        const max = current + eventRemaining;
+                        const max = current + remaining;
                         const activeSuper = superPlan === plan.id;
                         return (
                           <article className="proposal event-proposal" key={plan.id}>
