@@ -92,6 +92,7 @@ export default function Dashboard() {
           <form className="form-card" onSubmit={createGroup}>
             <strong><Plus size={17} style={{ verticalAlign: "middle" }} /> Create group</strong>
             <div className="inline-form"><input className="input" placeholder="Weekend Crew" value={newName} onChange={(e) => setNewName(e.target.value)} required /><button className="button">Create</button></div>
+            <small className="form-hint">You get 10 chips every day. Unused chips roll over.</small>
           </form>
           <form className="form-card" onSubmit={joinGroup}>
             <strong><Users size={17} style={{ verticalAlign: "middle" }} /> Join group</strong>
