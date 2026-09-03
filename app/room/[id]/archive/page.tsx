@@ -26,6 +26,8 @@ type Score = {
   supporters: number;
   total_score: number;
 };
+type RevealedVote = { plan_id: string; user_id: string; chips: number };
+type Profile = { id: string; display_name: string | null };
 
 function formatEventDate(dateKey: string | null) {
   if (!dateKey) return "Date TBD";
@@ -37,6 +39,10 @@ function formatArchivedDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
+function chipLabel(chips: number) {
+  return `${chips.toLocaleString()} ${chips === 1 ? "chip" : "chips"}`;
+}
+
 export default function ArchivedEventsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -44,6 +50,9 @@ export default function ArchivedEventsPage() {
   const [group, setGroup] = useState<Group | null>(null);
   const [events, setEvents] = useState<GroupEvent[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
+  const [revealedVotes, setRevealedVotes] = useState<RevealedVote[]>([]);
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
+  const [currentUserId, setCurrentUserId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -51,10 +60,11 @@ export default function ArchivedEventsPage() {
     setError("");
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return router.push("/auth");
+    setCurrentUserId(auth.user.id);
 
     await supabase.rpc("auto_archive_expired_events", { p_group_id: id });
 
-    const [groupResult, eventsResult, scoresResult] = await Promise.all([
+    const [groupResult, eventsResult, scoresResult, votesResult] = await Promise.all([
       supabase.from("groups").select("id,name").eq("id", id).single(),
       supabase
         .from("events")
@@ -63,6 +73,7 @@ export default function ArchivedEventsPage() {
         .not("archived_at", "is", null)
         .order("archived_at", { ascending: false }),
       supabase.from("plan_scores").select("*").eq("group_id", id),
+      supabase.from("votes").select("plan_id,user_id,chips").eq("group_id", id),
     ]);
 
     if (groupResult.error) {
@@ -75,8 +86,23 @@ export default function ArchivedEventsPage() {
     setEvents((eventsResult.data ?? []) as GroupEvent[]);
     setScores((scoresResult.data ?? []) as Score[]);
 
+    const breakdownVotes = (votesResult.data ?? []) as RevealedVote[];
+    setRevealedVotes(breakdownVotes);
+    const voterIds = Array.from(new Set(breakdownVotes.map((vote) => vote.user_id)));
+    let profileErrorMessage = "";
+    if (voterIds.length > 0) {
+      const profileResult = await supabase.from("profiles").select("id,display_name").in("id", voterIds);
+      if (profileResult.error) profileErrorMessage = profileResult.error.message;
+      const profiles = (profileResult.data ?? []) as Profile[];
+      setProfileNames(Object.fromEntries(profiles.map((profile) => [profile.id, profile.display_name?.trim() || "Member"])));
+    } else {
+      setProfileNames({});
+    }
+
     if (eventsResult.error) setError(eventsResult.error.message);
     else if (scoresResult.error) setError(scoresResult.error.message);
+    else if (votesResult.error) setError(`Reveal error: ${votesResult.error.message}`);
+    else if (profileErrorMessage) setError(`Reveal error: ${profileErrorMessage}`);
     setLoading(false);
   }, [id, router]);
 
@@ -126,6 +152,7 @@ export default function ArchivedEventsPage() {
                     <div className="event-empty">No activities.</div>
                   ) : eventPlans.map((plan, index) => {
                     const detailsLine = [plan.location, plan.description].filter(Boolean).join(" · ");
+                    const breakdown = revealedVotes.filter((vote) => vote.plan_id === plan.id).sort((a, b) => b.chips - a.chips);
                     return (
                       <article className="proposal event-proposal" key={plan.id}>
                         <div className="proposal-top">
@@ -137,6 +164,24 @@ export default function ArchivedEventsPage() {
                           </div>
                           <div className="total"><small>Score</small>{plan.total_score}</div>
                         </div>
+
+                        {breakdown.length > 0 && (
+                          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(23,24,20,.08)" }}>
+                            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 7 }}>Chip breakdown</div>
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {breakdown.map((vote) => {
+                                const baseName = profileNames[vote.user_id] || "Member";
+                                const name = vote.user_id === currentUserId ? (baseName === "Member" ? "You" : `${baseName} (you)`) : baseName;
+                                return (
+                                  <div key={`${plan.id}-${vote.user_id}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 10px", borderRadius: 12, background: "rgba(117,87,232,.07)", fontSize: 12 }}>
+                                    <span style={{ fontWeight: 800, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                                    <strong style={{ color: "var(--purple)", whiteSpace: "nowrap" }}>{chipLabel(vote.chips)}</strong>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </article>
                     );
                   })}
