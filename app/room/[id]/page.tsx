@@ -166,14 +166,6 @@ export default function RoomPage() {
     setGroup(groupResult.data as Group);
     const today = localDateKey();
     const sortedEvents = ((eventsResult.data ?? []) as GroupEvent[]).sort((a, b) => {
-      const aArchived = Boolean(a.archived_at);
-      const bArchived = Boolean(b.archived_at);
-      if (aArchived !== bArchived) return aArchived ? 1 : -1;
-
-      if (aArchived && bArchived) {
-        return (b.archived_at ?? "").localeCompare(a.archived_at ?? "") || b.created_at.localeCompare(a.created_at);
-      }
-
       const aExpired = Boolean(a.event_date && a.event_date < today);
       const bExpired = Boolean(b.event_date && b.event_date < today);
       if (aExpired !== bExpired) return aExpired ? 1 : -1;
@@ -226,6 +218,8 @@ export default function RoomPage() {
   const bankCap = wallet?.bank_cap ?? 500;
   const remainingPercent = Math.max(0, Math.min(100, (remaining / bankCap) * 100));
   const isOwner = currentRole === "owner";
+  const activeEvents = events.filter((groupEvent) => !groupEvent.archived_at);
+  const archivedCount = events.length - activeEvents.length;
 
   const scheduleDates = useMemo(
     () => scheduleSettings ? dateKeysBetween(scheduleSettings.start_date, scheduleSettings.end_date) : [],
@@ -433,74 +427,81 @@ export default function RoomPage() {
           {error && <div className="error" style={{ marginBottom: 15 }}>{error}</div>}
 
           {roomTab === "vote" ? (
-            events.length === 0 ? (
-              <div className="empty"><Sparkles size={32} /><h2>No events yet</h2><button className="button yellow" style={{ marginTop: 14 }} onClick={() => setShowEventModal(true)}><Plus size={17} /> Create event</button></div>
-            ) : (
-              <div className="event-list">
-                {events.map((groupEvent) => {
-                  const deadlineMs = groupEvent.voting_deadline ? new Date(groupEvent.voting_deadline).getTime() : null;
-                  const votingEnded = deadlineMs !== null && Date.now() >= deadlineMs;
-                  const resultsVisible = votingEnded || groupEvent.voting_deadline === null;
-                  const expiredEvent = Boolean(groupEvent.event_date && groupEvent.event_date < localDateKey());
-                  const archivedEvent = Boolean(groupEvent.archived_at);
-                  const canArchiveEvent = isOwner && votingEnded && !archivedEvent;
-                  const eventPlans = scores
-                    .filter((plan) => plan.event_id === groupEvent.id)
-                    .sort((a, b) => resultsVisible
-                      ? b.total_score - a.total_score || a.created_at.localeCompare(b.created_at)
-                      : a.created_at.localeCompare(b.created_at));
-                  return (
-                    <article className="event-card" key={groupEvent.id} style={archivedEvent ? { opacity: 0.72 } : undefined}>
-                      <div className="event-card-head">
-                        <div>
-                          <div className={groupEvent.event_date ? "event-date-pill" : "event-date-pill tbd"}><CalendarDays size={14} /> {formatEventDate(groupEvent.event_date)}</div>
-                          <h2>{groupEvent.title}</h2>
-                          {archivedEvent
-                            ? <p className="event-budget-copy">Archived</p>
-                            : groupEvent.voting_deadline && <p className="event-budget-copy">{votingEnded ? "Voting ended" : `Voting ends ${formatVotingDeadline(groupEvent.voting_deadline)}`}</p>}
+            <div>
+              {activeEvents.length === 0 ? (
+                <div className="empty"><Sparkles size={32} /><h2>No active events</h2><button className="button yellow" style={{ marginTop: 14 }} onClick={() => setShowEventModal(true)}><Plus size={17} /> Create event</button></div>
+              ) : (
+                <div className="event-list">
+                  {activeEvents.map((groupEvent) => {
+                    const deadlineMs = groupEvent.voting_deadline ? new Date(groupEvent.voting_deadline).getTime() : null;
+                    const votingEnded = deadlineMs !== null && Date.now() >= deadlineMs;
+                    const resultsVisible = votingEnded || groupEvent.voting_deadline === null;
+                    const expiredEvent = Boolean(groupEvent.event_date && groupEvent.event_date < localDateKey());
+                    const canArchiveEvent = isOwner && votingEnded;
+                    const eventPlans = scores
+                      .filter((plan) => plan.event_id === groupEvent.id)
+                      .sort((a, b) => resultsVisible
+                        ? b.total_score - a.total_score || a.created_at.localeCompare(b.created_at)
+                        : a.created_at.localeCompare(b.created_at));
+                    return (
+                      <article className="event-card" key={groupEvent.id}>
+                        <div className="event-card-head">
+                          <div>
+                            <div className={groupEvent.event_date ? "event-date-pill" : "event-date-pill tbd"}><CalendarDays size={14} /> {formatEventDate(groupEvent.event_date)}</div>
+                            <h2>{groupEvent.title}</h2>
+                            {groupEvent.voting_deadline && <p className="event-budget-copy">{votingEnded ? "Voting ended" : `Voting ends ${formatVotingDeadline(groupEvent.voting_deadline)}`}</p>}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            {!votingEnded && !expiredEvent && <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>}
+                            {canArchiveEvent && <button className="button secondary" onClick={() => archiveEvent(groupEvent)}><Archive size={16} /> Archive</button>}
+                          </div>
                         </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          {!votingEnded && !expiredEvent && !archivedEvent && <button className="button secondary" onClick={() => openPlanModal(groupEvent.id)}><Plus size={16} /> Add activity</button>}
-                          {canArchiveEvent && <button className="button secondary" onClick={() => archiveEvent(groupEvent)}><Archive size={16} /> Archive</button>}
-                        </div>
-                      </div>
 
-                      {eventPlans.length === 0 ? (
-                        <div className="event-empty">No activities yet.</div>
-                      ) : eventPlans.map((plan, index) => {
-                        const current = allocations[plan.id] ?? 0;
-                        const draft = drafts[plan.id] ?? current;
-                        const max = current + remaining;
-                        const detailsLine = [plan.location, plan.description].filter(Boolean).join(" · ");
-                        return (
-                          <article className="proposal event-proposal" key={plan.id}>
-                            <div className="proposal-top">
-                              <div className={resultsVisible && index === 0 ? "rank first" : "rank"}>{index + 1}</div>
-                              <div>
-                                <h2>{plan.title}</h2>
-                                {detailsLine && <p>{detailsLine}</p>}
-                                {resultsVisible && <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points}</p>}
-                              </div>
-                              {resultsVisible && <div className="total"><small>Score</small>{plan.total_score}</div>}
-                            </div>
-                            {!votingEnded && !expiredEvent && !archivedEvent && (
-                              <div className="vote-control">
-                                <div className="range-wrap">
-                                  <span>Chips</span>
-                                  <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="1" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
-                                  <span className="count-box">{draft}</span>
+                        {eventPlans.length === 0 ? (
+                          <div className="event-empty">No activities yet.</div>
+                        ) : eventPlans.map((plan, index) => {
+                          const current = allocations[plan.id] ?? 0;
+                          const draft = drafts[plan.id] ?? current;
+                          const max = current + remaining;
+                          const detailsLine = [plan.location, plan.description].filter(Boolean).join(" · ");
+                          return (
+                            <article className="proposal event-proposal" key={plan.id}>
+                              <div className="proposal-top">
+                                <div className={resultsVisible && index === 0 ? "rank first" : "rank"}>{index + 1}</div>
+                                <div>
+                                  <h2>{plan.title}</h2>
+                                  {detailsLine && <p>{detailsLine}</p>}
+                                  {resultsVisible && <p><Users size={13} style={{ verticalAlign: "middle" }} /> {plan.supporters} &nbsp; <Coins size={13} style={{ verticalAlign: "middle" }} /> {plan.regular_points}</p>}
                                 </div>
-                                <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
+                                {resultsVisible && <div className="total"><small>Score</small>{plan.total_score}</div>}
                               </div>
-                            )}
-                          </article>
-                        );
-                      })}
-                    </article>
-                  );
-                })}
-              </div>
-            )
+                              {!votingEnded && !expiredEvent && (
+                                <div className="vote-control">
+                                  <div className="range-wrap">
+                                    <span>Chips</span>
+                                    <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="1" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
+                                    <span className="count-box">{draft}</span>
+                                  </div>
+                                  <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
+                                </div>
+                              )}
+                            </article>
+                          );
+                        })}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+
+              <Link
+                href={`/room/${id}/archive`}
+                className="button secondary"
+                style={{ width: "100%", justifyContent: "center", marginTop: 18 }}
+              >
+                <Archive size={16} /> Archived events{archivedCount > 0 ? ` (${archivedCount})` : ""}
+              </Link>
+            </div>
           ) : (
             <div className="schedule-section">
               {(!scheduleSettings || showScheduleSetup) && isOwner ? (
