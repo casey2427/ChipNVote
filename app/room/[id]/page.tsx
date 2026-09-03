@@ -465,7 +465,7 @@ export default function RoomPage() {
                               <div className="vote-control">
                                 <div className="range-wrap">
                                   <span>Chips</span>
-                                  <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="5" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
+                                  <input className="range" aria-label={`Chips for ${plan.title}`} type="range" min="0" max={max} step="1" value={draft} onChange={(e) => setDrafts((old) => ({ ...old, [plan.id]: Number(e.target.value) }))} />
                                   <span className="count-box">{draft}</span>
                                 </div>
                                 <button className="button" disabled={draft === current} onClick={() => saveVote(plan.id)}>Save</button>
