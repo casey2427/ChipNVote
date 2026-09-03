@@ -20,6 +20,8 @@ type Score = {
   supporters: number;
   total_score: number;
 };
+type RevealedVote = { plan_id: string; user_id: string; chips: number };
+type Profile = { id: string; display_name: string | null };
 type ScheduleSettings = {
   group_id: string;
   created_by: string;
@@ -101,6 +103,10 @@ function formatSlotLabel(slotKey: string) {
   return `${formatDay(date)} at ${formatMinuteOfDay(hour * 60 + minute)}`;
 }
 
+function chipLabel(chips: number) {
+  return `${chips.toLocaleString()} ${chips === 1 ? "chip" : "chips"}`;
+}
+
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -110,6 +116,8 @@ export default function RoomPage() {
   const [scores, setScores] = useState<Score[]>([]);
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [drafts, setDrafts] = useState<Record<string, number>>({});
+  const [revealedVotes, setRevealedVotes] = useState<RevealedVote[]>([]);
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [memberCount, setMemberCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState("");
@@ -145,11 +153,12 @@ export default function RoomPage() {
 
     const { error: archiveSweepError } = await supabase.rpc("auto_archive_expired_events", { p_group_id: id });
 
-    const [groupResult, eventsResult, scoresResult, votesResult, walletResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
+    const [groupResult, eventsResult, scoresResult, votesResult, breakdownVotesResult, walletResult, membersResult, membershipResult, scheduleResult, availabilityResult] = await Promise.all([
       supabase.from("groups").select("id,name,invite_code").eq("id", id).single(),
       supabase.from("events").select("id,title,event_date,voting_deadline,archived_at,created_by,created_at").eq("group_id", id).order("created_at", { ascending: true }),
       supabase.from("plan_scores").select("*").eq("group_id", id),
       supabase.rpc("get_my_vote_allocations", { p_group_id: id }),
+      supabase.from("votes").select("plan_id,user_id,chips").eq("group_id", id),
       supabase.rpc("get_my_chip_wallet", { p_group_id: id }).single(),
       supabase.from("group_members").select("user_id", { count: "exact", head: true }).eq("group_id", id),
       supabase.from("group_members").select("role").eq("group_id", id).eq("user_id", auth.user.id).single(),
@@ -185,6 +194,20 @@ export default function RoomPage() {
     const next = Object.fromEntries(((votesResult.data ?? []) as { plan_id: string; chips: number }[]).map((vote) => [vote.plan_id, vote.chips]));
     setAllocations(next);
     setDrafts(next);
+
+    const breakdownVotes = (breakdownVotesResult.data ?? []) as RevealedVote[];
+    setRevealedVotes(breakdownVotes);
+    const voterIds = Array.from(new Set(breakdownVotes.map((vote) => vote.user_id)));
+    let profileErrorMessage = "";
+    if (voterIds.length > 0) {
+      const profileResult = await supabase.from("profiles").select("id,display_name").in("id", voterIds);
+      if (profileResult.error) profileErrorMessage = profileResult.error.message;
+      const profiles = (profileResult.data ?? []) as Profile[];
+      setProfileNames(Object.fromEntries(profiles.map((profile) => [profile.id, profile.display_name?.trim() || "Member"])));
+    } else {
+      setProfileNames({});
+    }
+
     setWallet((walletResult.data ?? null) as Wallet | null);
     setMemberCount(membersResult.count ?? 0);
     const loadedSchedule = (scheduleResult.data ?? null) as ScheduleSettings | null;
@@ -202,6 +225,8 @@ export default function RoomPage() {
     else if (eventsResult.error) setError(`Event error: ${eventsResult.error.message}`);
     else if (scoresResult.error) setError(scoresResult.error.message);
     else if (votesResult.error) setError(votesResult.error.message);
+    else if (breakdownVotesResult.error) setError(`Reveal error: ${breakdownVotesResult.error.message}`);
+    else if (profileErrorMessage) setError(`Reveal error: ${profileErrorMessage}`);
     else if (walletResult.error) setError(`Chip bank error: ${walletResult.error.message}`);
     else if (scheduleResult.error) setError(`Scheduling error: ${scheduleResult.error.message}`);
     else if (availabilityResult.error) setError(`Scheduling error: ${availabilityResult.error.message}`);
@@ -464,6 +489,9 @@ export default function RoomPage() {
                           const draft = drafts[plan.id] ?? current;
                           const max = current + remaining;
                           const detailsLine = [plan.location, plan.description].filter(Boolean).join(" · ");
+                          const breakdown = resultsVisible
+                            ? revealedVotes.filter((vote) => vote.plan_id === plan.id).sort((a, b) => b.chips - a.chips)
+                            : [];
                           return (
                             <article className="proposal event-proposal" key={plan.id}>
                               <div className="proposal-top">
@@ -475,6 +503,25 @@ export default function RoomPage() {
                                 </div>
                                 {resultsVisible && <div className="total"><small>Score</small>{plan.total_score}</div>}
                               </div>
+
+                              {resultsVisible && breakdown.length > 0 && (
+                                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(23,24,20,.08)" }}>
+                                  <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 7 }}>Chip breakdown</div>
+                                  <div style={{ display: "grid", gap: 6 }}>
+                                    {breakdown.map((vote) => {
+                                      const baseName = profileNames[vote.user_id] || "Member";
+                                      const name = vote.user_id === currentUserId ? (baseName === "Member" ? "You" : `${baseName} (you)`) : baseName;
+                                      return (
+                                        <div key={`${plan.id}-${vote.user_id}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "8px 10px", borderRadius: 12, background: "rgba(117,87,232,.07)", fontSize: 12 }}>
+                                          <span style={{ fontWeight: 800, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                                          <strong style={{ color: "var(--purple)", whiteSpace: "nowrap" }}>{chipLabel(vote.chips)}</strong>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
                               {!votingEnded && !expiredEvent && (
                                 <div className="vote-control">
                                   <div className="range-wrap">
