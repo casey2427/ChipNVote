@@ -105,13 +105,13 @@ export default function JoinRoomPage() {
         {checking || joining ? (
           <div style={{ textAlign: "center" }}>
             <LoaderCircle size={34} className="spin" style={{ margin: "28px auto 12px" }} />
-            <h1>Joining the room…</h1>
-            <p>Opening the group and getting your chips ready.</p>
+            <h1>Joining the group…</h1>
+            <p>Getting your room and chip balance ready.</p>
           </div>
         ) : (
           <>
             <h1>Join the group</h1>
-            <p>Enter your name, then use a trusted sign-in so your chips stay tied to you.</p>
+            <p>Enter your name, then sign in so your chip balance stays tied to one identity.</p>
 
             <label className="field">
               Your name
@@ -149,7 +149,7 @@ export default function JoinRoomPage() {
             </button>
 
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "14px 0 0", lineHeight: 1.5 }}>
-              Your starting chips and daily chip balance stay attached to the same account. There is no guest chip reset.
+              New members start with 100 chips and get 10 more every day. Unused chips roll over.
             </p>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "22px 0 14px", color: "var(--muted)", fontSize: 11, fontWeight: 800 }}>
