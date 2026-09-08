@@ -56,13 +56,6 @@ export async function middleware(request: NextRequest) {
     return redirectWithCookies(url, response);
   }
 
-  if (data.user && pathname === "/") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    url.search = "";
-    return redirectWithCookies(url, response);
-  }
-
   return response;
 }
 
