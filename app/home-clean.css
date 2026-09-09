@@ -1,0 +1,48 @@
+.advanced-settings {
+  margin-top: 18px;
+  border-top: 1px solid rgba(23, 24, 20, .08);
+  padding-top: 13px;
+}
+
+.advanced-settings summary {
+  list-style: none;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #74766e;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+}
+
+.advanced-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-settings summary::after {
+  content: "+";
+  margin-left: 3px;
+  color: #9a9c94;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.advanced-settings[open] summary::after {
+  content: "−";
+}
+
+.advanced-settings-body {
+  margin-top: 3px;
+  padding: 2px 0 1px;
+}
+
+.advanced-settings-body .field {
+  margin-top: 13px;
+}
+
+.advanced-settings-body .check-row {
+  margin-top: 15px;
+}
