@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { ArrowRight, Coins, Link2, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Coins, Link2, Plus, Settings2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getDeviceToken } from "@/lib/device";
@@ -116,9 +116,14 @@ export default function Home() {
             {choices.length < 10 && <button type="button" className="add-choice-link" onClick={() => setChoices((current) => [...current, ""])}><Plus size={16} /> Add choice</button>}
           </fieldset>
 
-          <label className="field">Event date <span className="optional">(optional)</span><input className="input" type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} /></label>
-          <label className="field">Voting deadline <span className="optional">(optional)</span><input className="input" type="datetime-local" value={votingDeadline} onChange={(event) => setVotingDeadline(event.target.value)} /><small className="optional">Group totals stay hidden until everyone who joined has voted or this deadline passes.</small></label>
-          <label className="check-row"><input type="checkbox" checked={allowGuestChoices} onChange={(event) => setAllowGuestChoices(event.target.checked)} /><span><strong>Let friends add choices</strong><small>Anyone who joins can suggest another option.</small></span></label>
+          <details className="advanced-settings">
+            <summary><Settings2 size={15} /> Advanced settings</summary>
+            <div className="advanced-settings-body">
+              <label className="field">Event date <span className="optional">(optional)</span><input className="input" type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} /></label>
+              <label className="field">Voting deadline <span className="optional">(optional)</span><input className="input" type="datetime-local" value={votingDeadline} onChange={(event) => setVotingDeadline(event.target.value)} /><small className="optional">Results reveal when everyone votes or this deadline passes.</small></label>
+              <label className="check-row"><input type="checkbox" checked={allowGuestChoices} onChange={(event) => setAllowGuestChoices(event.target.checked)} /><span><strong>Let friends add choices</strong><small>Anyone who joins can suggest another option.</small></span></label>
+            </div>
+          </details>
 
           {error && <div className="error">{error}</div>}
           <button className="button yellow create-button" disabled={creating}>{creating ? "Creating…" : <>Create & share <ArrowRight size={18} /></>}</button>
