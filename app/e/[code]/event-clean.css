@@ -1,0 +1,574 @@
+/* Cleaner visual layer for the no-account event flow. */
+
+.decision-page,
+.join-decision-wrap {
+  background: #f7f7f4;
+}
+
+.decision-page .shell {
+  width: min(1040px, calc(100% - 40px));
+}
+
+.decision-page .app-nav {
+  height: 68px;
+  border-bottom: 1px solid rgba(23, 24, 20, 0.08);
+}
+
+.decision-page .brand,
+.join-decision-card .brand {
+  gap: 9px;
+  font-size: 20px;
+}
+
+.decision-page .brand-mark,
+.join-decision-card .brand-mark {
+  width: 35px;
+  height: 35px;
+  border: 0;
+  border-radius: 11px;
+  box-shadow: none;
+  transform: none;
+}
+
+.decision-page .button,
+.join-decision-card .button {
+  min-height: 42px;
+  padding: 10px 17px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.decision-page .button:hover,
+.join-decision-card .button:hover {
+  transform: none;
+  opacity: .88;
+}
+
+.decision-page .button.secondary {
+  background: #fff;
+  border: 1px solid rgba(23, 24, 20, 0.09);
+  box-shadow: 0 1px 2px rgba(20, 20, 18, 0.03);
+}
+
+.decision-page .button.yellow,
+.join-decision-card .button.yellow {
+  background: #f4c844;
+  box-shadow: none;
+}
+
+.decision-layout {
+  grid-template-columns: minmax(0, 1fr) 248px;
+  gap: 24px;
+  padding: 34px 0 72px;
+}
+
+.decision-head {
+  margin-bottom: 18px;
+}
+
+.decision-head .eyebrow {
+  color: #777970;
+  font-size: 11px;
+  letter-spacing: .11em;
+}
+
+.decision-head h1 {
+  max-width: 760px;
+  margin: 10px 0 8px;
+  font-size: clamp(38px, 5vw, 58px);
+  line-height: 1;
+  letter-spacing: -.055em;
+}
+
+.decision-head > p {
+  display: inline-block;
+  margin: 3px 10px 0 0;
+  color: #777970;
+  font-size: 12px;
+}
+
+.decision-error.identity-card {
+  margin: 0 0 18px;
+  padding: 13px 14px;
+  border: 1px solid rgba(117, 87, 232, .12);
+  border-radius: 14px;
+  background: #f1eefc;
+  box-shadow: none;
+}
+
+.decision-error.identity-card > svg {
+  color: #7557e8;
+  flex: 0 0 auto;
+}
+
+.decision-error.identity-card small {
+  color: #7557e8;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+.decision-error.identity-card strong {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 650;
+}
+
+.decision-choices {
+  gap: 10px;
+}
+
+.decision-choice {
+  padding: 17px 18px;
+  border: 1px solid rgba(23, 24, 20, 0.08);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(22, 22, 18, 0.025);
+}
+
+.decision-choice.leader {
+  border: 1px solid rgba(117, 87, 232, .28);
+  box-shadow: 0 3px 14px rgba(117, 87, 232, .07);
+}
+
+.choice-result-row {
+  gap: 12px;
+}
+
+.choice-rank {
+  width: 30px;
+  height: 30px;
+  background: #f1f0ec;
+  color: #5c5e57;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.decision-choice.leader .choice-rank {
+  background: #f4c844;
+  color: #171814;
+}
+
+.choice-title h2 {
+  font-size: 18px;
+  font-weight: 780;
+  letter-spacing: -.025em;
+}
+
+.choice-title p {
+  margin-top: 3px;
+  color: #85877f;
+  font-size: 11px;
+}
+
+.choice-total {
+  font-size: 22px;
+  font-weight: 850;
+  letter-spacing: -.025em;
+}
+
+.choice-total small {
+  margin-top: 2px;
+  color: #92948d;
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+
+.allocation-control {
+  grid-template-columns: 34px minmax(100px, 1fr) 58px 34px;
+  gap: 8px;
+  margin-top: 15px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(23, 24, 20, 0.06);
+}
+
+.allocation-control button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(23, 24, 20, 0.09);
+  border-radius: 10px;
+  background: #fafaf8;
+  color: #34352f;
+}
+
+.allocation-control button:hover:not(:disabled) {
+  background: #f1f0ec;
+}
+
+.allocation-control input[type="range"] {
+  accent-color: #7557e8;
+}
+
+.chip-number-input {
+  width: 58px;
+  height: 34px;
+  border: 1px solid rgba(23, 24, 20, 0.1);
+  border-radius: 10px;
+  background: #fafaf8;
+  font-size: 13px;
+}
+
+.result-bar {
+  height: 5px;
+  background: #efeee9;
+}
+
+.allocation-label {
+  margin-top: 12px;
+  margin-bottom: 0;
+  color: #85877f;
+  font-size: 11px;
+}
+
+.allocation-label strong {
+  color: #55574f;
+  font-size: 12px;
+}
+
+.save-vote-bar {
+  bottom: 12px;
+  margin-top: 14px;
+  padding: 12px 12px 12px 15px;
+  border: 1px solid rgba(23, 24, 20, .09);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 8px 28px rgba(23, 24, 20, .08);
+}
+
+.save-vote-bar > div {
+  gap: 1px;
+}
+
+.save-vote-bar strong {
+  font-size: 13px;
+}
+
+.save-vote-bar span {
+  font-size: 10px;
+}
+
+.save-vote-bar .button {
+  min-width: 132px;
+}
+
+.add-option-form {
+  margin-top: 10px;
+  padding: 9px 10px 9px 12px;
+  border: 1px solid rgba(23, 24, 20, .08);
+  border-radius: 13px;
+  background: #fff;
+  color: #777970;
+}
+
+.add-option-form input {
+  font-size: 12px;
+}
+
+.add-option-form button {
+  padding: 7px 12px;
+  border-radius: 9px;
+  background: #171814;
+  font-size: 11px;
+}
+
+.decision-sidebar {
+  top: 18px;
+  gap: 10px;
+}
+
+.event-wallet,
+.identity-card,
+.participants-card {
+  border-radius: 15px;
+}
+
+.event-wallet {
+  padding: 18px;
+  background: #1d1e1a;
+}
+
+.event-wallet .eyebrow {
+  color: rgba(255, 255, 255, .46);
+  font-size: 10px;
+  letter-spacing: .1em;
+}
+
+.event-wallet-number {
+  margin-top: 6px;
+  font-size: 52px;
+  letter-spacing: -.055em;
+}
+
+.event-wallet p {
+  margin-top: 0;
+  font-size: 11px;
+}
+
+.event-wallet small {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.budget-blocks {
+  gap: 3px;
+  margin: 14px 0 6px;
+}
+
+.budget-blocks > span {
+  height: 9px;
+  border: 0;
+  border-radius: 3px;
+}
+
+.budget-caption {
+  margin-bottom: 13px;
+}
+
+.identity-card,
+.participants-card {
+  padding: 13px 14px;
+  border: 1px solid rgba(23, 24, 20, .08);
+  background: #fff;
+  box-shadow: none;
+}
+
+.identity-card {
+  gap: 9px;
+}
+
+.identity-card small,
+.participant-row small {
+  color: #888a82;
+}
+
+.identity-card strong,
+.participant-row strong {
+  font-size: 12px;
+}
+
+.participants-title {
+  margin-bottom: 3px;
+}
+
+.participants-title strong {
+  font-size: 12px;
+}
+
+.participant-row {
+  padding: 9px 0;
+  border-top-color: rgba(23, 24, 20, .06);
+}
+
+.participant-row > button,
+.participants-title button {
+  padding: 4px;
+}
+
+.join-decision-wrap {
+  padding: 24px;
+  background: #f7f7f4;
+}
+
+.join-decision-card {
+  width: min(540px, 100%);
+  padding: clamp(24px, 5vw, 34px);
+  border: 1px solid rgba(23, 24, 20, .08);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 16px 50px rgba(23, 24, 20, .08);
+}
+
+.event-preview-pill {
+  margin-top: 28px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: #f1eefc;
+  font-size: 10px;
+}
+
+.join-decision-card h1 {
+  margin: 12px 0 8px;
+  font-size: clamp(34px, 7vw, 48px);
+  line-height: 1;
+  letter-spacing: -.05em;
+}
+
+.decision-date {
+  font-size: 12px;
+}
+
+.preview-choices {
+  gap: 6px;
+  margin: 20px 0;
+}
+
+.preview-choices span {
+  padding: 7px 9px;
+  border: 1px solid rgba(23, 24, 20, .08);
+  border-radius: 8px;
+  background: #fafaf8;
+  font-size: 11px;
+}
+
+.join-decision-card .field {
+  margin-top: 14px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.join-decision-card .input {
+  padding: 12px 13px;
+  border-radius: 10px;
+}
+
+.join-decision-card form .button {
+  margin-top: 14px;
+}
+
+.device-note {
+  margin-top: 12px;
+  font-size: 10px;
+}
+
+.chip-budget-mobile {
+  border-radius: 13px;
+}
+
+@media (max-width: 860px) {
+  .decision-page .shell {
+    width: min(100% - 28px, 720px);
+  }
+
+  .decision-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding-top: 26px;
+  }
+
+  .decision-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-sidebar > .identity-card {
+    display: none;
+  }
+
+  .participants-card {
+    margin-top: 2px;
+  }
+
+  .chip-budget-mobile {
+    margin-bottom: 10px;
+    padding: 11px 13px;
+    background: #1d1e1a;
+  }
+}
+
+@media (max-width: 600px) {
+  .decision-page .app-nav {
+    height: 62px;
+  }
+
+  .decision-page .brand {
+    font-size: 18px;
+  }
+
+  .decision-page .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .decision-page .button.secondary {
+    min-height: 36px;
+    padding: 8px 11px;
+    font-size: 11px;
+  }
+
+  .decision-layout {
+    padding-top: 22px;
+    padding-bottom: 50px;
+  }
+
+  .decision-head {
+    margin-bottom: 14px;
+  }
+
+  .decision-head h1 {
+    margin-top: 8px;
+    font-size: clamp(34px, 11vw, 44px);
+  }
+
+  .decision-error.identity-card {
+    padding: 11px 12px;
+  }
+
+  .decision-choice {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  .choice-result-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .choice-title h2 {
+    font-size: 16px;
+  }
+
+  .choice-total {
+    font-size: 20px;
+  }
+
+  .allocation-control {
+    grid-template-columns: 32px minmax(70px, 1fr) 54px 32px;
+    gap: 6px;
+    margin-top: 13px;
+    padding-top: 12px;
+  }
+
+  .allocation-control button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .chip-number-input {
+    width: 54px;
+    height: 32px;
+  }
+
+  .save-vote-bar {
+    bottom: 7px;
+    gap: 9px;
+    padding: 10px;
+    border-radius: 13px;
+  }
+
+  .save-vote-bar .button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .add-option-form {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .add-option-form button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .join-decision-wrap {
+    padding: 14px;
+  }
+
+  .join-decision-card {
+    padding: 22px 18px;
+    border-radius: 16px;
+    box-shadow: 0 8px 28px rgba(23, 24, 20, .06);
+  }
+}
