@@ -156,7 +156,7 @@ export default function DecisionPage() {
   }
 
   async function removeParticipant(participant: Participant) {
-    if (!deviceToken || decision?.voting_closed || !window.confirm(`Remove ${participant.display_name} and their chips from this event?`)) return;
+    if (!deviceToken || decision?.voting_closed || !window.confirm(`Remove ${participant.display_name} from this event?`)) return;
     const { error: removeError } = await createClient().rpc("remove_decision_participant", {
       p_invite_code: inviteCode,
       p_device_token: deviceToken,
@@ -183,14 +183,14 @@ export default function DecisionPage() {
           <div className="event-preview-pill">{decision.participant_count} {decision.participant_count === 1 ? "person" : "people"} joined</div>
           <h1>{decision.question}</h1>
           {formatDate(decision.event_date) && <p className="decision-date">{formatDate(decision.event_date)}</p>}
-          {formatDeadline(decision.voting_deadline) && <p className="decision-date">Voting deadline: {formatDeadline(decision.voting_deadline)}</p>}
+          {formatDeadline(decision.voting_deadline) && <p className="decision-date">Vote by {formatDeadline(decision.voting_deadline)}</p>}
           <div className="preview-choices">{decision.choices.map((choice) => <span key={choice.id}>{choice.title}</span>)}</div>
           <form onSubmit={join}>
-            <label className="field">What should we call you?<input className="input" autoFocus placeholder="Alex" value={name} onChange={(event) => setName(event.target.value)} maxLength={50} required disabled={decision.voting_closed} /></label>
+            <label className="field">Your name<input className="input" autoFocus placeholder="Alex" value={name} onChange={(event) => setName(event.target.value)} maxLength={50} required disabled={decision.voting_closed} /></label>
             {error && <div className="error">{error}</div>}
-            <button className="button yellow" disabled={joining || decision.voting_closed}>{decision.voting_closed ? "Voting ended" : joining ? "Joining…" : "Join with 100 chips"}</button>
+            <button className="button yellow" disabled={joining || decision.voting_closed}>{decision.voting_closed ? "Voting ended" : joining ? "Joining…" : "Join & get 100 chips"}</button>
           </form>
-          <p className="device-note">{decision.voting_closed ? "Voting is closed and group results have been revealed to participants." : "No account needed. This browser remembers your vote."}</p>
+          <p className="device-note">{decision.voting_closed ? "Voting has ended." : "No signup. Split your 100 chips between the options you want most."}</p>
         </div>
       </main>
     );
@@ -202,100 +202,122 @@ export default function DecisionPage() {
     <main className="decision-page">
       <nav className="shell app-nav">
         <Link href="/" className="brand"><span className="brand-mark"><Coins size={20} /></span>ChipNVote</Link>
-        <button className="button secondary" onClick={copyInvite}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Link copied" : "Share event"}</button>
+        <button className="button secondary" onClick={copyInvite}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Link copied" : "Invite friends"}</button>
       </nav>
 
       <div className="shell decision-layout">
         <section className="decision-main">
           <header className="decision-head">
-            <div className="eyebrow"><Users size={14} /> {decision.participant_count} {decision.participant_count === 1 ? "person" : "people"}</div>
+            <div className="eyebrow"><Users size={14} /> {decision.votes_submitted}/{decision.participant_count} votes submitted</div>
             <h1>{decision.question}</h1>
             {formatDate(decision.event_date) && <p>{formatDate(decision.event_date)}</p>}
-            {formatDeadline(decision.voting_deadline) && <p>Voting deadline: {formatDeadline(decision.voting_deadline)}</p>}
+            {formatDeadline(decision.voting_deadline) && <p>Vote by {formatDeadline(decision.voting_deadline)}</p>}
           </header>
 
-          <div className="identity-card decision-error">
-            {decision.results_visible ? <Check size={18} /> : <Users size={18} />}
-            <div>
-              <small>{decision.results_visible ? "Results revealed" : "Blind voting"}</small>
-              <strong>{decision.results_visible ? "Group totals are now visible and voting is locked." : `Group totals are hidden · ${decision.votes_submitted}/${decision.participant_count} voted`}</strong>
+          {!decision.results_visible && (
+            <div className="identity-card decision-error">
+              {viewer.has_voted ? <Check size={18} /> : <Coins size={18} />}
+              <div>
+                <small>{viewer.has_voted ? "Your vote is submitted" : "How voting works"}</small>
+                <strong>{viewer.has_voted ? "You can still change your chips until voting closes." : "Split up to 100 chips, then submit your vote. Group results stay hidden until everyone votes or the deadline passes."}</strong>
+              </div>
             </div>
-          </div>
+          )}
+
+          {decision.results_visible && (
+            <div className="identity-card decision-error">
+              <Check size={18} />
+              <div><small>Final results</small><strong>Voting is closed. The group totals are now revealed.</strong></div>
+            </div>
+          )}
 
           {error && <div className="error decision-error">{error}</div>}
 
           <div className="chip-budget-mobile">
-            <span><b>{chipsRemaining}</b> chips left <small>{chipsUsed}/100 allocated</small></span>
+            <span><b>{chipsRemaining}</b> chips left <small>{chipsUsed}/100 used</small></span>
             <ChipBudgetBlocks used={chipsUsed} />
           </div>
 
           <div className="decision-choices">
             {decision.choices.map((choice, index) => {
               const mine = drafts[choice.id] ?? 0;
+
+              if (!decision.results_visible) {
+                return (
+                  <article className="decision-choice" key={choice.id}>
+                    <div className="choice-result-row">
+                      <span className="choice-rank">{String.fromCharCode(65 + index)}</span>
+                      <div className="choice-title"><h2>{choice.title}</h2><p>How much do you want this?</p></div>
+                      <strong className="choice-total">{mine}<small>your chips</small></strong>
+                    </div>
+                    <div className="allocation-control">
+                      <button type="button" aria-label={`Remove chips from ${choice.title}`} onClick={() => setChoiceChips(choice.id, mine - 5)} disabled={decision.voting_closed || mine === 0}><Minus size={17} /></button>
+                      <input type="range" min="0" max="100" step="1" value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Your chips for ${choice.title}`} disabled={decision.voting_closed} />
+                      <input className="chip-number-input" type="number" min="0" max="100" value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Exact chips for ${choice.title}`} disabled={decision.voting_closed} />
+                      <button type="button" aria-label={`Add chips to ${choice.title}`} onClick={() => setChoiceChips(choice.id, mine + 5)} disabled={decision.voting_closed || chipsRemaining === 0}><Plus size={17} /></button>
+                    </div>
+                  </article>
+                );
+              }
+
               return (
-                <article className={decision.results_visible && index === 0 && choice.total_chips > 0 ? "decision-choice leader" : "decision-choice"} key={choice.id}>
+                <article className={index === 0 && choice.total_chips > 0 ? "decision-choice leader" : "decision-choice"} key={choice.id}>
                   <div className="choice-result-row">
                     <span className="choice-rank">{index + 1}</span>
-                    <div className="choice-title">
-                      <h2>{choice.title}</h2>
-                      <p>{decision.results_visible ? `${choice.supporters} ${choice.supporters === 1 ? "supporter" : "supporters"}` : viewer.has_voted ? "Your vote is saved" : "Group results hidden"}</p>
-                    </div>
-                    <strong className="choice-total">{decision.results_visible ? choice.total_chips : "—"}<small>{decision.results_visible ? "chips" : "hidden"}</small></strong>
+                    <div className="choice-title"><h2>{choice.title}</h2><p>{choice.supporters} {choice.supporters === 1 ? "supporter" : "supporters"}</p></div>
+                    <strong className="choice-total">{choice.total_chips}<small>group chips</small></strong>
                   </div>
-                  <div className="result-bar-label"><span>Group total</span><strong>{decision.results_visible ? `${choice.total_chips} chips` : "Hidden"}</strong></div>
-                  <div className="result-bar" aria-hidden="true"><span style={{ width: decision.results_visible && choice.total_chips ? `${Math.max(5, (choice.total_chips / maxTotal) * 100)}%` : "0%" }} /></div>
-                  <div className="allocation-label"><span>Your chips</span><strong>{mine}</strong></div>
-                  <div className="allocation-control">
-                    <button type="button" aria-label={`Remove chips from ${choice.title}`} onClick={() => setChoiceChips(choice.id, mine - 5)} disabled={decision.voting_closed || mine === 0}><Minus size={17} /></button>
-                    <input type="range" min="0" max="100" step="1" value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Your chips for ${choice.title}`} disabled={decision.voting_closed} />
-                    <input className="chip-number-input" type="number" min="0" max="100" value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Exact chips for ${choice.title}`} disabled={decision.voting_closed} />
-                    <button type="button" aria-label={`Add chips to ${choice.title}`} onClick={() => setChoiceChips(choice.id, mine + 5)} disabled={decision.voting_closed || chipsRemaining === 0}><Plus size={17} /></button>
-                  </div>
+                  <div className="result-bar" aria-hidden="true" style={{ marginTop: 14 }}><span style={{ width: choice.total_chips ? `${Math.max(5, (choice.total_chips / maxTotal) * 100)}%` : "0%" }} /></div>
+                  <div className="allocation-label"><span>Your vote</span><strong>{mine} chips</strong></div>
                 </article>
               );
             })}
           </div>
 
-          <div className="save-vote-bar">
-            <div>
-              <strong>{decision.voting_closed ? "Voting has ended" : `${chipsUsed}/100 allocated`}</strong>
-              <span>{decision.voting_closed ? "Your saved allocation is locked because the group results are visible." : chipsRemaining ? `You still have ${chipsRemaining} chips to spend.` : "All 100 chips are allocated."}</span>
+          {!decision.voting_closed && (
+            <div className="save-vote-bar">
+              <div>
+                <strong>{chipsRemaining} chips left</strong>
+                <span>{viewer.has_voted ? dirty ? "You changed your vote. Submit again to save it." : "Your vote is submitted." : chipsUsed ? "Submit when you are happy with your split." : "Move a slider or type a chip amount to start."}</span>
+              </div>
+              <button className="button yellow" onClick={saveVotes} disabled={!dirty || saving || chipsRemaining < 0}>{saving ? "Submitting…" : viewer.has_voted ? dirty ? "Update my vote" : "Vote submitted" : "Submit my vote"}</button>
             </div>
-            <button className="button yellow" onClick={saveVotes} disabled={decision.voting_closed || !dirty || saving || chipsRemaining < 0}>{decision.voting_closed ? "Vote locked" : saving ? "Saving…" : "Save my chips"}</button>
-          </div>
+          )}
 
           {!decision.voting_closed && (decision.allow_guest_choices || viewer.is_creator) && (
             <form className="add-option-form" onSubmit={addChoice}>
               <Plus size={20} />
-              <input placeholder="Suggest another choice" value={newChoice} onChange={(event) => setNewChoice(event.target.value)} maxLength={120} required />
-              <button type="submit" disabled={addingChoice}>{addingChoice ? "Adding…" : "Add"}</button>
+              <input placeholder="Add another option" value={newChoice} onChange={(event) => setNewChoice(event.target.value)} maxLength={120} required />
+              <button type="submit" disabled={addingChoice}>{addingChoice ? "Adding…" : "Add option"}</button>
             </form>
           )}
         </section>
 
         <aside className="decision-sidebar">
-          <div className="event-wallet">
-            <div className="eyebrow">Your event chips</div>
-            <div className="event-wallet-number">{chipsRemaining}</div>
-            <p>of 100 left</p>
-            <ChipBudgetBlocks used={chipsUsed} />
-            <div className="budget-caption"><span>0</span><strong>{chipsUsed} allocated</strong><span>100</span></div>
-            <small>{decision.voting_closed ? "Voting is locked. Your saved chips can no longer be changed." : "These chips only belong to this event. There is nothing to save for later."}</small>
-          </div>
+          {!decision.results_visible && (
+            <div className="event-wallet">
+              <div className="eyebrow">Your chips</div>
+              <div className="event-wallet-number">{chipsRemaining}</div>
+              <p>left out of 100</p>
+              <ChipBudgetBlocks used={chipsUsed} />
+              <div className="budget-caption"><span>0</span><strong>{chipsUsed} used</strong><span>100</span></div>
+              <small>Use more chips on the options you care about most.</small>
+            </div>
+          )}
 
           <div className="identity-card">
             <UserRound size={18} />
-            <div><small>Voting as</small><strong>{viewer.display_name}</strong></div>
+            <div><small>You are</small><strong>{viewer.display_name}</strong></div>
           </div>
 
           {viewer.is_creator && decision.participants && (
             <div className="participants-card">
-              <div className="participants-title"><strong>Participants</strong><button type="button" onClick={() => loadDecision(false)} aria-label="Refresh participants"><RefreshCw size={15} /></button></div>
+              <div className="participants-title"><strong>Who has voted?</strong><button type="button" onClick={() => loadDecision(false)} aria-label="Refresh participants"><RefreshCw size={15} /></button></div>
               {decision.participants.map((participant) => (
                 <div className="participant-row" key={participant.id}>
                   <span>
                     <strong>{participant.display_name}</strong>
-                    <small>{participant.is_creator ? `Creator · ${participant.has_voted ? "voted" : "waiting"}` : participant.has_voted ? decision.results_visible ? `${participant.chips_spent}/100 spent · voted` : "Voted" : "Waiting to vote"}</small>
+                    <small>{participant.has_voted ? "Voted" : "Waiting"}{participant.is_creator ? " · Creator" : ""}</small>
                   </span>
                   {!participant.is_creator && !decision.voting_closed && <button type="button" onClick={() => removeParticipant(participant)} aria-label={`Remove ${participant.display_name}`}><Trash2 size={15} /></button>}
                 </div>
