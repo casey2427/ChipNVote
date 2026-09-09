@@ -6,6 +6,7 @@ import { ArrowRight, Coins, Link2, Plus, Settings2, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getDeviceToken } from "@/lib/device";
+import "./home-clean.css";
 
 function Brand() {
   return (
