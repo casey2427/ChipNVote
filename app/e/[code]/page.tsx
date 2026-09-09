@@ -28,6 +28,17 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat(undefined, { weekday: "short", month: "long", day: "numeric" }).format(new Date(year, month - 1, day, 12));
 }
 
+function ChipBudgetBlocks({ used }: { used: number }) {
+  return (
+    <div className="budget-blocks" aria-label={`${used} of 100 chips allocated`}>
+      {Array.from({ length: 10 }, (_, index) => {
+        const fill = Math.max(0, Math.min(100, (used - index * 10) * 10));
+        return <span key={index} style={{ background: `linear-gradient(90deg, var(--yellow) ${fill}%, rgba(255,255,255,.14) ${fill}%)` }} />;
+      })}
+    </div>
+  );
+}
+
 export default function DecisionPage() {
   const { code } = useParams<{ code: string }>();
   const inviteCode = useMemo(() => decodeURIComponent(code).trim().toUpperCase(), [code]);
@@ -186,14 +197,13 @@ export default function DecisionPage() {
           {error && <div className="error decision-error">{error}</div>}
 
           <div className="chip-budget-mobile">
-            <span><b>{chipsRemaining}</b> chips left</span>
-            <i><em style={{ width: `${chipsUsed}%` }} /></i>
+            <span><b>{chipsRemaining}</b> chips left <small>{chipsUsed}/100 allocated</small></span>
+            <ChipBudgetBlocks used={chipsUsed} />
           </div>
 
           <div className="decision-choices">
             {decision.choices.map((choice, index) => {
               const mine = drafts[choice.id] ?? 0;
-              const maxForChoice = mine + chipsRemaining;
               return (
                 <article className={index === 0 && choice.total_chips > 0 ? "decision-choice leader" : "decision-choice"} key={choice.id}>
                   <div className="choice-result-row">
@@ -201,11 +211,13 @@ export default function DecisionPage() {
                     <div className="choice-title"><h2>{choice.title}</h2><p>{choice.supporters} {choice.supporters === 1 ? "supporter" : "supporters"}</p></div>
                     <strong className="choice-total">{choice.total_chips}<small>chips</small></strong>
                   </div>
-                  <div className="result-bar"><span style={{ width: `${choice.total_chips ? Math.max(5, (choice.total_chips / maxTotal) * 100) : 0}%` }} /></div>
+                  <div className="result-bar-label"><span>Group total</span><strong>{choice.total_chips} chips</strong></div>
+                  <div className="result-bar" aria-hidden="true"><span style={{ width: `${choice.total_chips ? Math.max(5, (choice.total_chips / maxTotal) * 100) : 0}%` }} /></div>
+                  <div className="allocation-label"><span>Your chips</span><strong>{mine}</strong></div>
                   <div className="allocation-control">
                     <button type="button" aria-label={`Remove chips from ${choice.title}`} onClick={() => setChoiceChips(choice.id, mine - 5)} disabled={mine === 0}><Minus size={17} /></button>
-                    <input type="range" min="0" max={maxForChoice} step="1" value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Your chips for ${choice.title}`} />
-                    <input className="chip-number-input" type="number" min="0" max={maxForChoice} value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Exact chips for ${choice.title}`} />
+                    <input type="range" min="0" max="100" step="1" value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Your chips for ${choice.title}`} />
+                    <input className="chip-number-input" type="number" min="0" max="100" value={mine} onChange={(event) => setChoiceChips(choice.id, Number(event.target.value))} aria-label={`Exact chips for ${choice.title}`} />
                     <button type="button" aria-label={`Add chips to ${choice.title}`} onClick={() => setChoiceChips(choice.id, mine + 5)} disabled={chipsRemaining === 0}><Plus size={17} /></button>
                   </div>
                 </article>
@@ -232,7 +244,8 @@ export default function DecisionPage() {
             <div className="eyebrow">Your event chips</div>
             <div className="event-wallet-number">{chipsRemaining}</div>
             <p>of 100 left</p>
-            <div className="meter"><span style={{ width: `${chipsUsed}%` }} /></div>
+            <ChipBudgetBlocks used={chipsUsed} />
+            <div className="budget-caption"><span>0</span><strong>{chipsUsed} allocated</strong><span>100</span></div>
             <small>These chips only belong to this event. There is nothing to save for later.</small>
           </div>
 
