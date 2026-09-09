@@ -22,6 +22,7 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [choices, setChoices] = useState(["", ""]);
   const [eventDate, setEventDate] = useState("");
+  const [votingDeadline, setVotingDeadline] = useState("");
   const [allowGuestChoices, setAllowGuestChoices] = useState(true);
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
@@ -49,6 +50,7 @@ export default function Home() {
       p_device_token: getDeviceToken(),
       p_event_date: eventDate || null,
       p_allow_guest_choices: allowGuestChoices,
+      p_voting_deadline: votingDeadline ? new Date(votingDeadline).toISOString() : null,
     });
     setCreating(false);
 
@@ -115,6 +117,7 @@ export default function Home() {
           </fieldset>
 
           <label className="field">Event date <span className="optional">(optional)</span><input className="input" type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} /></label>
+          <label className="field">Voting deadline <span className="optional">(optional)</span><input className="input" type="datetime-local" value={votingDeadline} onChange={(event) => setVotingDeadline(event.target.value)} /><small className="optional">Group totals stay hidden until everyone who joined has voted or this deadline passes.</small></label>
           <label className="check-row"><input type="checkbox" checked={allowGuestChoices} onChange={(event) => setAllowGuestChoices(event.target.checked)} /><span><strong>Let friends add choices</strong><small>Anyone who joins can suggest another option.</small></span></label>
 
           {error && <div className="error">{error}</div>}
