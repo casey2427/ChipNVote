@@ -196,6 +196,8 @@ export default function DecisionPage() {
     );
   }
 
+  const viewer = decision.viewer;
+
   return (
     <main className="decision-page">
       <nav className="shell app-nav">
@@ -236,7 +238,7 @@ export default function DecisionPage() {
                     <span className="choice-rank">{index + 1}</span>
                     <div className="choice-title">
                       <h2>{choice.title}</h2>
-                      <p>{decision.results_visible ? `${choice.supporters} ${choice.supporters === 1 ? "supporter" : "supporters"}` : decision.viewer.has_voted ? "Your vote is saved" : "Group results hidden"}</p>
+                      <p>{decision.results_visible ? `${choice.supporters} ${choice.supporters === 1 ? "supporter" : "supporters"}` : viewer.has_voted ? "Your vote is saved" : "Group results hidden"}</p>
                     </div>
                     <strong className="choice-total">{decision.results_visible ? choice.total_chips : "—"}<small>{decision.results_visible ? "chips" : "hidden"}</small></strong>
                   </div>
@@ -262,7 +264,7 @@ export default function DecisionPage() {
             <button className="button yellow" onClick={saveVotes} disabled={decision.voting_closed || !dirty || saving || chipsRemaining < 0}>{decision.voting_closed ? "Vote locked" : saving ? "Saving…" : "Save my chips"}</button>
           </div>
 
-          {!decision.voting_closed && (decision.allow_guest_choices || decision.viewer.is_creator) && (
+          {!decision.voting_closed && (decision.allow_guest_choices || viewer.is_creator) && (
             <form className="add-option-form" onSubmit={addChoice}>
               <Plus size={20} />
               <input placeholder="Suggest another choice" value={newChoice} onChange={(event) => setNewChoice(event.target.value)} maxLength={120} required />
@@ -283,10 +285,10 @@ export default function DecisionPage() {
 
           <div className="identity-card">
             <UserRound size={18} />
-            <div><small>Voting as</small><strong>{decision.viewer.display_name}</strong></div>
+            <div><small>Voting as</small><strong>{viewer.display_name}</strong></div>
           </div>
 
-          {decision.viewer.is_creator && decision.participants && (
+          {viewer.is_creator && decision.participants && (
             <div className="participants-card">
               <div className="participants-title"><strong>Participants</strong><button type="button" onClick={() => loadDecision(false)} aria-label="Refresh participants"><RefreshCw size={15} /></button></div>
               {decision.participants.map((participant) => (
