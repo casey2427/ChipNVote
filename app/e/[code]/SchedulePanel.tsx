@@ -126,7 +126,7 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
     for (let minute = data.settings.start_hour * 60; minute < data.settings.end_hour * 60; minute += data.settings.slot_minutes) values.push(minute);
     return values;
   }, [data.settings]);
-  const mine = useMemo(() => Object.fromEntries(data.viewer_preferences.map((item) => [item.slot_key, item.preference])) as Record<string, 1 | 2>, [data.viewer_preferences]);
+  const mine = useMemo(() => Object.fromEntries(data.viewer_preferences.map((item) => [item.slot_key, item.preference])) as Partial<Record<string, 1 | 2>>, [data.viewer_preferences]);
   const summary = useMemo(() => Object.fromEntries(data.summary.map((item) => [item.slot_key, item])) as Record<string, { slot_key: string; available: number; preferred: number }>, [data.summary]);
   const bestSlots = useMemo(() => [...data.summary].filter((item) => item.available > 0).sort((a, b) => b.available - a.available || b.preferred - a.preferred || a.slot_key.localeCompare(b.slot_key)).slice(0, 3), [data.summary]);
 
