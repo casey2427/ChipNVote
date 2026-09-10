@@ -9,7 +9,7 @@ import { getDeviceToken } from "@/lib/device";
 import SchedulePanel from "./SchedulePanel";
 
 type Choice = { id: string; title: string; total_chips: number; supporters: number };
-type Participant = { id: string; display_name: string; is_creator: boolean; chips_spent: number; has_voted: boolean };
+type Participant = { id: string; display_name: string; is_creator: boolean; chips_spent: number; has_voted: boolean; requested_reveal: boolean };
 type Decision = {
   id: string;
   question: string;
@@ -19,6 +19,8 @@ type Decision = {
   allow_guest_choices: boolean;
   participant_count: number;
   votes_submitted: number;
+  reveal_request_count: number;
+  viewer_requested_reveal: boolean;
   results_visible: boolean;
   voting_closed: boolean;
   viewer: null | { id: string; display_name: string; is_creator: boolean; chips_spent: number; chips_remaining: number; has_voted: boolean };
@@ -70,6 +72,8 @@ export default function DecisionPage() {
   const [joining, setJoining] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addingChoice, setAddingChoice] = useState(false);
+  const [revealing, setRevealing] = useState(false);
+  const [requestingReveal, setRequestingReveal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [activePanel, setActivePanel] = useState<Panel>("vote");
@@ -170,6 +174,32 @@ export default function DecisionPage() {
     await loadDecision(false);
   }
 
+  async function revealVotes() {
+    if (!deviceToken || decision?.voting_closed || !decision?.viewer?.is_creator) return;
+    setRevealing(true);
+    setError("");
+    const { error: revealError } = await createClient().rpc("reveal_decision_results", {
+      p_invite_code: inviteCode,
+      p_device_token: deviceToken,
+    });
+    setRevealing(false);
+    if (revealError) return setError(revealError.message);
+    await loadDecision(false);
+  }
+
+  async function requestReveal() {
+    if (!deviceToken || decision?.voting_closed || decision?.viewer?.is_creator || decision?.viewer_requested_reveal) return;
+    setRequestingReveal(true);
+    setError("");
+    const { error: requestError } = await createClient().rpc("request_decision_results_reveal", {
+      p_invite_code: inviteCode,
+      p_device_token: deviceToken,
+    });
+    setRequestingReveal(false);
+    if (requestError) return setError(requestError.message);
+    await loadDecision(false);
+  }
+
   async function copyInvite() {
     await navigator.clipboard.writeText(window.location.href);
     setCopied(true);
@@ -230,7 +260,7 @@ export default function DecisionPage() {
                   {viewer.has_voted ? <Check size={18} /> : <Coins size={18} />}
                   <div>
                     <small>{viewer.has_voted ? "Your vote is submitted" : `${decision.votes_submitted}/${decision.participant_count} votes submitted`}</small>
-                    <strong>{viewer.has_voted ? "You can still change your chips until voting closes." : "Split up to 100 chips, then submit. Group results stay hidden until everyone votes or the deadline passes."}</strong>
+                    <strong>{viewer.has_voted ? "You can still change your chips until the leader reveals results or the deadline passes." : "Split up to 100 chips, then submit. Group results stay hidden until the leader reveals them or the deadline passes."}</strong>
                   </div>
                 </div>
               )}
@@ -239,6 +269,36 @@ export default function DecisionPage() {
                 <div className="identity-card decision-error">
                   <Check size={18} />
                   <div><small>Final results</small><strong>Voting is closed. The group totals are now revealed.</strong></div>
+                </div>
+              )}
+
+              {!decision.results_visible && viewer.is_creator && (
+                <div className="reveal-control-card">
+                  <div>
+                    <small>Results control</small>
+                    <strong>
+                      {decision.reveal_request_count > 0
+                        ? `${decision.reveal_request_count} ${decision.reveal_request_count === 1 ? "member has" : "members have"} requested the results.`
+                        : decision.votes_submitted > 0
+                          ? "Reveal whenever the group is ready, or leave them hidden until the deadline."
+                          : "Results will stay hidden until you reveal them or the deadline passes."}
+                    </strong>
+                  </div>
+                  <button className="button yellow" type="button" onClick={revealVotes} disabled={revealing || decision.votes_submitted === 0}>
+                    {revealing ? "Revealing…" : "Reveal votes"}
+                  </button>
+                </div>
+              )}
+
+              {!decision.results_visible && !viewer.is_creator && viewer.has_voted && (
+                <div className="reveal-control-card">
+                  <div>
+                    <small>Results</small>
+                    <strong>{decision.viewer_requested_reveal ? "You asked the group leader to reveal the votes." : "Want to see the totals now? Send a reveal request to the group leader."}</strong>
+                  </div>
+                  <button className="button secondary" type="button" onClick={requestReveal} disabled={requestingReveal || decision.viewer_requested_reveal}>
+                    {decision.viewer_requested_reveal ? "Request sent" : requestingReveal ? "Sending…" : "Request reveal"}
+                  </button>
                 </div>
               )}
 
@@ -330,7 +390,7 @@ export default function DecisionPage() {
                 <div className="participant-row" key={participant.id}>
                   <span>
                     <strong>{participant.display_name}</strong>
-                    <small>{participant.has_voted ? "Voted" : "Waiting"}{participant.is_creator ? " · Creator" : ""}</small>
+                    <small>{participant.has_voted ? "Voted" : "Waiting"}{participant.requested_reveal ? " · Requested reveal" : ""}{participant.is_creator ? " · Creator" : ""}</small>
                   </span>
                   {!participant.is_creator && !decision.voting_closed && <button type="button" onClick={() => removeParticipant(participant)} aria-label={`Remove ${participant.display_name}`}><Trash2 size={15} /></button>}
                 </div>
