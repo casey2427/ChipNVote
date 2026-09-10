@@ -8,7 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { getDeviceToken } from "@/lib/device";
 import SchedulePanel from "./SchedulePanel";
 
-type Choice = { id: string; title: string; total_chips: number; supporters: number };
+type ChoiceVoter = { participant_id: string; display_name: string; chips: number };
+type Choice = { id: string; title: string; total_chips: number; supporters: number; voters: ChoiceVoter[] };
 type Participant = { id: string; display_name: string; is_creator: boolean; chips_spent: number; has_voted: boolean; requested_reveal: boolean };
 type Decision = {
   id: string;
@@ -338,6 +339,22 @@ export default function DecisionPage() {
                       </div>
                       <div className="result-bar" aria-hidden="true" style={{ marginTop: 14 }}><span style={{ width: choice.total_chips ? `${Math.max(5, (choice.total_chips / maxTotal) * 100)}%` : "0%" }} /></div>
                       <div className="allocation-label"><span>Your vote</span><strong>{mine} chips</strong></div>
+                      <details className="vote-breakdown">
+                        <summary>
+                          <span>See who voted</span>
+                          <small>{choice.voters.length} {choice.voters.length === 1 ? "person" : "people"}</small>
+                        </summary>
+                        <div className="vote-breakdown-list">
+                          {choice.voters.length > 0 ? choice.voters.map((voter) => (
+                            <div className="vote-breakdown-row" key={voter.participant_id}>
+                              <strong>{voter.display_name}</strong>
+                              <span>{voter.chips} {voter.chips === 1 ? "chip" : "chips"}</span>
+                            </div>
+                          )) : (
+                            <div className="vote-breakdown-empty">No one put chips on this option.</div>
+                          )}
+                        </div>
+                      </details>
                     </article>
                   );
                 })}
