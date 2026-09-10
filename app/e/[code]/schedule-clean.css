@@ -244,6 +244,7 @@
   display: grid;
   min-width: max-content;
   gap: 4px;
+  user-select: none;
   padding: 4px;
   border-radius: 14px;
   background: #e9e9e5;
@@ -277,6 +278,7 @@
 .decision-schedule-cell {
   position: relative;
   min-width: 82px;
+  touch-action: none;
   min-height: 42px;
   border: 1px solid rgba(23, 24, 20, .055);
   border-radius: 9px;
@@ -290,6 +292,16 @@
 
 .decision-schedule-cell:hover {
   transform: scale(.98);
+}
+
+.decision-schedule-grid.is-dragging .decision-schedule-cell {
+  cursor: crosshair;
+}
+
+.schedule-save-state {
+  color: #92948d;
+  font-size: 9px;
+  font-weight: 750;
 }
 
 .decision-schedule-cell strong {
