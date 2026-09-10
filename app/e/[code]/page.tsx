@@ -5,7 +5,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Check, Coins, Copy, Minus, Plus, RefreshCw, Trash2, UserRound, Users } from "lucide-react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { getDeviceToken } from "@/lib/device";
+import { getDeviceToken, getRememberedDisplayName, rememberDisplayName } from "@/lib/device";
+import { rememberRecentEvent } from "@/lib/recent-events";
 import SchedulePanel from "./SchedulePanel";
 
 type ChoiceVoter = { participant_id: string; display_name: string; chips: number };
@@ -98,12 +99,28 @@ export default function DecisionPage() {
     setLoading(false);
   }, [deviceToken, inviteCode]);
 
-  useEffect(() => setDeviceToken(getDeviceToken()), []);
+  const scheduleOnly = Boolean(decision && decision.choices.length === 0);
+
+  useEffect(() => {
+    setDeviceToken(getDeviceToken());
+    setName(getRememberedDisplayName());
+  }, []);
   useEffect(() => { void loadDecision(true); }, [loadDecision]);
   useEffect(() => {
     const timer = window.setInterval(() => void loadDecision(false), 10000);
     return () => window.clearInterval(timer);
   }, [loadDecision]);
+
+  useEffect(() => {
+    if (!decision?.viewer) return;
+    rememberDisplayName(decision.viewer.display_name);
+    rememberRecentEvent({
+      inviteCode: decision.invite_code,
+      question: decision.question,
+      kind: scheduleOnly ? "time" : "vote",
+      path: `/e/${decision.invite_code}`,
+    });
+  }, [decision?.invite_code, decision?.question, decision?.viewer?.display_name, decision?.viewer?.id, scheduleOnly]);
 
   const chipsUsed = Object.values(drafts).reduce((total, chips) => total + chips, 0);
   const chipsRemaining = 100 - chipsUsed;
@@ -215,18 +232,19 @@ export default function DecisionPage() {
       <main className="join-decision-wrap">
         <div className="join-decision-card">
           <Link href="/" className="brand"><span className="brand-mark"><Coins size={20} /></span>ChipNVote</Link>
-          <div className="event-preview-pill">{decision.participant_count} {decision.participant_count === 1 ? "person" : "people"} joined</div>
-          {!decision.results_visible && <div className="event-preview-pill">{decision.votes_submitted}/{decision.participant_count} friends have voted</div>}
+          <div className="event-preview-pill">{scheduleOnly ? "Find a time" : `${decision.participant_count} ${decision.participant_count === 1 ? "person" : "people"} joined`}</div>
+          {scheduleOnly && <p className="decision-date">{decision.participant_count} {decision.participant_count === 1 ? "person" : "people"} joined</p>}
+          {!scheduleOnly && !decision.results_visible && <div className="event-preview-pill">{decision.votes_submitted}/{decision.participant_count} friends have voted</div>}
           <h1>{decision.question}</h1>
           {formatDate(decision.event_date) && <p className="decision-date">{formatDate(decision.event_date)}</p>}
           {formatDeadline(decision.voting_deadline) && <p className="decision-date">Vote by {formatDeadline(decision.voting_deadline)}</p>}
-          <div className="preview-choices">{decision.choices.map((choice) => <span key={choice.id}>{choice.title}</span>)}</div>
+          {!scheduleOnly && <div className="preview-choices">{decision.choices.map((choice) => <span key={choice.id}>{choice.title}</span>)}</div>}
           <form onSubmit={join}>
             <label className="field">Your name<input className="input" autoFocus placeholder="Alex" value={name} onChange={(event) => setName(event.target.value)} maxLength={50} required disabled={decision.voting_closed} /></label>
             {error && <div className="error">{error}</div>}
-            <button className="button yellow" disabled={joining || decision.voting_closed}>{decision.voting_closed ? "Voting ended" : joining ? "Joining…" : "Join & get 100 chips"}</button>
+            <button className="button yellow" disabled={joining || (!scheduleOnly && decision.voting_closed)}>{joining ? "Joining…" : scheduleOnly ? "Join & add availability" : decision.voting_closed ? "Voting ended" : "Join & get 100 chips"}</button>
           </form>
-          <p className="device-note">{decision.voting_closed ? "Voting has ended." : "No signup. Split your 100 chips between the options you want most."}</p>
+          <p className="device-note">{scheduleOnly ? "No signup. Mark the times that work for you." : decision.voting_closed ? "Voting has ended." : "No signup. Split your 100 chips between the options you want most."}</p>
         </div>
       </main>
     );
@@ -248,14 +266,16 @@ export default function DecisionPage() {
             <h1>{decision.question}</h1>
           </header>
 
-          <div className="event-tabs" role="tablist" aria-label="Event tools">
-            <button type="button" className={activePanel === "vote" ? "event-tab active" : "event-tab"} onClick={() => setActivePanel("vote")}><Coins size={15} /> Vote</button>
-            <button type="button" className={activePanel === "schedule" ? "event-tab active" : "event-tab"} onClick={() => setActivePanel("schedule")}><CalendarDays size={15} /> Find a time</button>
-          </div>
+          {!scheduleOnly && (
+            <div className="event-tabs" role="tablist" aria-label="Event tools">
+              <button type="button" className={activePanel === "vote" ? "event-tab active" : "event-tab"} onClick={() => setActivePanel("vote")}><Coins size={15} /> Vote</button>
+              <button type="button" className={activePanel === "schedule" ? "event-tab active" : "event-tab"} onClick={() => setActivePanel("schedule")}><CalendarDays size={15} /> Find a time</button>
+            </div>
+          )}
 
           {error && <div className="error decision-error">{error}</div>}
 
-          {activePanel === "vote" ? (
+          {!scheduleOnly && activePanel === "vote" ? (
             <>
               {!decision.results_visible && (
                 <div className="identity-card decision-error">
@@ -385,7 +405,7 @@ export default function DecisionPage() {
         </section>
 
         <aside className="decision-sidebar">
-          {activePanel === "vote" && !decision.results_visible && (
+          {!scheduleOnly && activePanel === "vote" && !decision.results_visible && (
             <div className="event-wallet">
               <div className="eyebrow">Your chips</div>
               <div className="event-wallet-number">{chipsRemaining}</div>
@@ -408,7 +428,7 @@ export default function DecisionPage() {
                 <div className="participant-row" key={participant.id}>
                   <span>
                     <strong>{participant.display_name}</strong>
-                    <small>{participant.has_voted ? "Voted" : "Waiting"}{participant.requested_reveal ? " · Requested reveal" : ""}{participant.is_creator ? " · Creator" : ""}</small>
+                    <small>{scheduleOnly ? "Joined" : participant.has_voted ? "Voted" : "Waiting"}{!scheduleOnly && participant.requested_reveal ? " · Requested reveal" : ""}{participant.is_creator ? " · Creator" : ""}</small>
                   </span>
                   {!participant.is_creator && !decision.voting_closed && <button type="button" onClick={() => removeParticipant(participant)} aria-label={`Remove ${participant.display_name}`}><Trash2 size={15} /></button>}
                 </div>
