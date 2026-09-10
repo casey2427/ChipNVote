@@ -215,7 +215,8 @@ export default function DecisionPage() {
       <main className="join-decision-wrap">
         <div className="join-decision-card">
           <Link href="/" className="brand"><span className="brand-mark"><Coins size={20} /></span>ChipNVote</Link>
-          <div className="event-preview-pill">{decision.participant_count} {decision.participant_count === 1 ? "person" : "people"} joined</div>\n          {!decision.results_visible && <div className="event-preview-pill">{decision.votes_submitted}/{decision.participant_count} friends have voted</div>}
+          <div className="event-preview-pill">{decision.participant_count} {decision.participant_count === 1 ? "person" : "people"} joined</div>
+          {!decision.results_visible && <div className="event-preview-pill">{decision.votes_submitted}/{decision.participant_count} friends have voted</div>}
           <h1>{decision.question}</h1>
           {formatDate(decision.event_date) && <p className="decision-date">{formatDate(decision.event_date)}</p>}
           {formatDeadline(decision.voting_deadline) && <p className="decision-date">Vote by {formatDeadline(decision.voting_deadline)}</p>}
