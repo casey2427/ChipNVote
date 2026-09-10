@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Clock, RefreshCw, Settings2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -81,7 +81,9 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [busySlot, setBusySlot] = useState("");
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [dragOverrides, setDragOverrides] = useState<Record<string, 0 | 1 | 2>>({});
+  const dragRef = useRef<{ active: boolean; preference: 0 | 1 | 2; slots: Set<string> }>({ active: false, preference: 1, slots: new Set() });
   const [startDate, setStartDate] = useState(localDateKey());
   const [endDate, setEndDate] = useState(localDateKey(6));
   const [startHour, setStartHour] = useState(9);
@@ -126,7 +128,7 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
     for (let minute = data.settings.start_hour * 60; minute < data.settings.end_hour * 60; minute += data.settings.slot_minutes) values.push(minute);
     return values;
   }, [data.settings]);
-  const mine = useMemo(() => Object.fromEntries(data.viewer_preferences.map((item) => [item.slot_key, item.preference])) as Partial<Record<string, 1 | 2>>, [data.viewer_preferences]);
+  const savedMine = useMemo(() => Object.fromEntries(data.viewer_preferences.map((item) => [item.slot_key, item.preference])) as Partial<Record<string, 1 | 2>>, [data.viewer_preferences]);
   const summary = useMemo(() => Object.fromEntries(data.summary.map((item) => [item.slot_key, item])) as Record<string, { slot_key: string; available: number; preferred: number }>, [data.summary]);
   const bestSlots = useMemo(() => [...data.summary].filter((item) => item.available > 0).sort((a, b) => b.available - a.available || b.preferred - a.preferred || a.slot_key.localeCompare(b.slot_key)).slice(0, 3), [data.summary]);
 
@@ -152,23 +154,76 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
     await load();
   }
 
-  async function cycle(slotKey: string) {
-    if (busySlot) return;
-    const current = mine[slotKey] ?? 0;
-    const next = current === 0 ? 1 : current === 1 ? 2 : 0;
-    setBusySlot(slotKey);
-    const { error } = await createClient().rpc("set_decision_schedule_availability", {
+  const saveAvailabilityUpdates = useCallback(async (updates: { slot_key: string; preference: 0 | 1 | 2 }[]) => {
+    if (!updates.length) return;
+    setSavingAvailability(true);
+    const { error } = await createClient().rpc("set_decision_schedule_availability_bulk", {
       p_invite_code: inviteCode,
       p_device_token: deviceToken,
-      p_slot_key: slotKey,
-      p_preference: next,
+      p_updates: updates,
     });
-    setBusySlot("");
+    setSavingAvailability(false);
     if (error) {
+      setDragOverrides({});
       onError(error.message);
+      await load();
       return;
     }
+    setDragOverrides({});
     await load();
+  }, [deviceToken, inviteCode, load, onError]);
+
+  const finishDrag = useCallback(() => {
+    const drag = dragRef.current;
+    if (!drag.active) return;
+    drag.active = false;
+    const updates = Array.from(drag.slots).map((slot_key) => ({ slot_key, preference: drag.preference }));
+    drag.slots = new Set();
+    void saveAvailabilityUpdates(updates);
+  }, [saveAvailabilityUpdates]);
+
+  useEffect(() => {
+    const finish = () => finishDrag();
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [finishDrag]);
+
+  function getPreference(slotKey: string): 0 | 1 | 2 {
+    return dragOverrides[slotKey] ?? savedMine[slotKey] ?? 0;
+  }
+
+  function beginDrag(slotKey: string) {
+    if (savingAvailability) return;
+    const current = getPreference(slotKey);
+    const next: 0 | 1 | 2 = current === 0 ? 1 : current === 1 ? 2 : 0;
+    dragRef.current = { active: true, preference: next, slots: new Set([slotKey]) };
+    setDragOverrides((old) => ({ ...old, [slotKey]: next }));
+  }
+
+  function paintDraggedSlot(slotKey: string) {
+    const drag = dragRef.current;
+    if (!drag.active || drag.slots.has(slotKey)) return;
+    drag.slots.add(slotKey);
+    setDragOverrides((old) => ({ ...old, [slotKey]: drag.preference }));
+  }
+
+  function paintFromPoint(clientX: number, clientY: number) {
+    if (!dragRef.current.active) return;
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-schedule-slot]");
+    const slotKey = target?.dataset.scheduleSlot;
+    if (slotKey) paintDraggedSlot(slotKey);
+  }
+
+  function cycleWithKeyboard(slotKey: string) {
+    if (savingAvailability) return;
+    const current = getPreference(slotKey);
+    const next: 0 | 1 | 2 = current === 0 ? 1 : current === 1 ? 2 : 0;
+    setDragOverrides((old) => ({ ...old, [slotKey]: next }));
+    void saveAvailabilityUpdates([{ slot_key: slotKey, preference: next }]);
   }
 
   async function clearMine() {
@@ -223,7 +278,7 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
     <div className="schedule-panel">
       <div className="schedule-card schedule-overview-clean">
         <div className="schedule-topline">
-          <div><div className="eyebrow"><Clock size={13} /> Find a time</div><h2>{data.responded_count}/{participantCount} people responded</h2><p>{data.settings.timezone} · Click once for available, twice for preferred, a third time to clear.</p></div>
+          <div><div className="eyebrow"><Clock size={13} /> Find a time</div><h2>{data.responded_count}/{participantCount} people responded</h2><p>{data.settings.timezone} · Click or drag across cells. Blank → available → preferred → clear.</p></div>
           {viewerIsCreator && <button type="button" className="button secondary" onClick={() => setEditing(true)}><Settings2 size={14} /> Edit</button>}
         </div>
 
@@ -244,11 +299,17 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
         <span><i className="legend-group" /> Group availability</span>
         <span><i className="legend-mine" /> Your available time</span>
         <span><i className="legend-preferred-clean" /> Your preferred time</span>
-        <button type="button" onClick={() => void clearMine()} disabled={!data.viewer_preferences.length}>Clear my times</button>
+        <span className="schedule-save-state">{savingAvailability ? "Saving…" : "Drag to paint multiple times"}</span>
+        <button type="button" onClick={() => void clearMine()} disabled={!data.viewer_preferences.length || savingAvailability}>Clear my times</button>
       </div>
 
       <div className="decision-schedule-scroll">
-        <div className="decision-schedule-grid" style={{ gridTemplateColumns: `74px repeat(${dates.length}, 82px)` }}>
+        <div
+          className={dragRef.current.active ? "decision-schedule-grid is-dragging" : "decision-schedule-grid"}
+          style={{ gridTemplateColumns: `74px repeat(${dates.length}, 82px)` }}
+          onPointerMove={(event) => paintFromPoint(event.clientX, event.clientY)}
+          onPointerLeave={(event) => paintFromPoint(event.clientX, event.clientY)}
+        >
           <div className="decision-schedule-corner">Time</div>
           {dates.map((dateKey) => <div className="decision-schedule-day" key={dateKey}>{formatDay(dateKey)}</div>)}
           {times.map((minute) => (
@@ -256,7 +317,7 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
               <div className="decision-schedule-time">{formatMinuteOfDay(minute)}</div>
               {dates.map((dateKey) => {
                 const slotKey = `${dateKey}|${timeKey(minute)}`;
-                const myPreference = mine[slotKey] ?? 0;
+                const myPreference = getPreference(slotKey);
                 const slotSummary = summary[slotKey] ?? { available: 0, preferred: 0 };
                 const groupRatio = participantCount ? slotSummary.available / participantCount : 0;
                 return (
@@ -265,8 +326,11 @@ export default function SchedulePanel({ inviteCode, deviceToken, participantCoun
                     key={slotKey}
                     className={`decision-schedule-cell${myPreference === 1 ? " mine-available" : myPreference === 2 ? " mine-preferred" : ""}`}
                     style={!myPreference && slotSummary.available ? { background: `rgba(39, 140, 105, ${Math.min(.42, .07 + groupRatio * .34)})` } : undefined}
-                    onClick={() => void cycle(slotKey)}
-                    disabled={busySlot === slotKey}
+                    data-schedule-slot={slotKey}
+                    onPointerDown={() => beginDrag(slotKey)}
+                    onPointerEnter={() => paintDraggedSlot(slotKey)}
+                    onClick={(event) => { if (event.detail === 0) cycleWithKeyboard(slotKey); }}
+                    disabled={savingAvailability}
                     title={`${formatSlotLabel(slotKey)} · ${slotSummary.available} available · ${slotSummary.preferred} preferred`}
                     aria-label={`${formatSlotLabel(slotKey)}. ${slotSummary.available} available. Your status: ${myPreference === 2 ? "preferred" : myPreference === 1 ? "available" : "not selected"}.`}
                   >
