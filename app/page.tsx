@@ -81,7 +81,7 @@ export default function Home() {
       <section className="shell simple-hero">
         <div className="simple-intro">
           <div className="eyebrow">One event · 100 chips each · no signup</div>
-          <h1>Spend your chips on what you <span>actually want.</span></h1>
+          <h1>Vote on what you <span>want.</span></h1>
           <p>Make an event, share the link, and let everyone split 100 chips across the choices. More chips means they want it more.</p>
 
           <div className="allocation-example" aria-label="Example chip allocation">
@@ -121,7 +121,7 @@ export default function Home() {
             <summary><Settings2 size={15} /> Advanced settings</summary>
             <div className="advanced-settings-body">
               <label className="field">Event date <span className="optional">(optional)</span><input className="input" type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} /></label>
-              <label className="field">Voting deadline <span className="optional">(optional)</span><input className="input" type="datetime-local" value={votingDeadline} onChange={(event) => setVotingDeadline(event.target.value)} /><small className="optional">Results reveal when everyone votes or this deadline passes.</small></label>
+              <label className="field">Voting deadline <span className="optional">(optional)</span><input className="input" type="datetime-local" value={votingDeadline} onChange={(event) => setVotingDeadline(event.target.value)} /><small className="optional">Results reveal when the group leader chooses or this deadline passes.</small></label>
               <label className="check-row"><input type="checkbox" checked={allowGuestChoices} onChange={(event) => setAllowGuestChoices(event.target.checked)} /><span><strong>Let friends add choices</strong><small>Anyone who joins can suggest another option.</small></span></label>
             </div>
           </details>
