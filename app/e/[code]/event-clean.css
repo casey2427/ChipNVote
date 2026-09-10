@@ -267,6 +267,92 @@
   font-size: 12px;
 }
 
+.vote-breakdown {
+  margin-top: 12px;
+  border-top: 1px solid rgba(23, 24, 20, .07);
+}
+
+.vote-breakdown summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0 0;
+  color: #666860;
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 750;
+  user-select: none;
+}
+
+.vote-breakdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.vote-breakdown summary small {
+  margin-left: auto;
+  color: #979991;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.vote-breakdown summary::after {
+  content: "+";
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 7px;
+  background: #f1f0ec;
+  color: #55574f;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.vote-breakdown[open] summary::after {
+  content: "−";
+}
+
+.vote-breakdown-list {
+  display: grid;
+  gap: 7px;
+  padding: 10px 0 2px;
+}
+
+.vote-breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #f7f7f4;
+}
+
+.vote-breakdown-row strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vote-breakdown-row span {
+  flex: 0 0 auto;
+  color: #7557e8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.vote-breakdown-empty {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #f7f7f4;
+  color: #92948d;
+  font-size: 10px;
+}
+
 .save-vote-bar {
   bottom: 12px;
   margin-top: 14px;
